@@ -39,16 +39,18 @@ module.exports = async (req, res) => {
 
     // Parse request body
     const {
-      name,           // Batch manager name
-      date,
-      yardsOut,       // Concrete delivered (yards)
-      tripsOut,       // Trips/loads
-      drivers,        // Array of driver statuses
-      fuelReading,    // Fuel tank reading
+      name,           // Batch manager name (submitter)
+      date,           // Report date
+      yardsOut,       // Total yards of concrete delivered
+      tripsOut,       // Number of trips/loads
+      drivers,        // Array of driver objects: [{name, status, hours}, ...]
+      fuelReading,    // End of day fuel tank reading
       issues,         // Issues/notes
       preparedBy,     // Who submitted (same as name usually)
       timestamp       // Submission timestamp
     } = req.body;
+
+    console.log('Received daily report:', { name, date, yardsOut, tripsOut, drivers, fuelReading, issues });
 
     // Validate required fields
     if (!date) {
@@ -66,43 +68,66 @@ module.exports = async (req, res) => {
     }
 
     // Build properties object for Notion
+    // Name is the title property
     const properties = {
-      'Date': {
+      'Name': {
+        title: [
+          {
+            text: {
+              content: `Daily Report - ${date}`
+            }
+          }
+        ]
+      },
+      'Report Date': {
         date: {
           start: date
         }
       },
-      'Batch Manager': {
-        select: {
-          name: name
-        }
+      'Submitted By': {
+        rich_text: [
+          {
+            text: {
+              content: name || preparedBy || 'Unknown'
+            }
+          }
+        ]
       }
     };
 
-    // Add yards out (concrete delivered)
+    // Add total yards out (concrete delivered)
     if (yardsOut !== undefined && yardsOut !== null && yardsOut !== '') {
-      properties['Concrete Delivered (yards)'] = {
-        number: parseFloat(yardsOut)
-      };
+      const yards = parseFloat(yardsOut);
+      if (!isNaN(yards)) {
+        properties['Total Yards Out'] = {
+          number: yards
+        };
+      }
     }
 
     // Add trips out
     if (tripsOut !== undefined && tripsOut !== null && tripsOut !== '') {
-      properties['Trips Out'] = {
-        number: parseFloat(tripsOut)
-      };
+      const trips = parseFloat(tripsOut);
+      if (!isNaN(trips)) {
+        properties['Trips Out'] = {
+          number: trips
+        };
+      }
     }
 
-    // Add fuel reading
+    // Add end of day fuel reading
     if (fuelReading !== undefined && fuelReading !== null && fuelReading !== '') {
-      properties['Fuel Reading'] = {
-        number: parseFloat(fuelReading)
-      };
+      const fuel = parseFloat(fuelReading);
+      if (!isNaN(fuel)) {
+        properties['End of Day Fuel Reading'] = {
+          number: fuel
+        };
+      }
     }
 
-    // Add issues/notes
-    if (issues && issues !== 'N/A') {
-      properties['Issues'] = {
+    // Add issues presented
+    if (issues) {
+      properties['Issues Presented'] = {
         rich_text: [
           {
             text: {
@@ -113,49 +138,38 @@ module.exports = async (req, res) => {
       };
     }
 
-    // Add driver statuses as a formatted string
-    if (drivers && drivers.length > 0) {
-      const driverSummary = drivers.map(d => {
-        const status = d.fullDay ? 'Full Day' : d.halfDay ? 'Half Day' : '';
-        return `${d.name}: ${status}`;
-      }).join(', ');
-      
-      properties['Drivers'] = {
-        rich_text: [
-          {
-            text: {
-              content: driverSummary
+    // Process drivers array into individual driver fields
+    // Expected format: [{name: "James", status: "Working", hours: 8}, ...]
+    if (drivers && Array.isArray(drivers)) {
+      drivers.forEach((driver, index) => {
+        if (index < 5 && driver.name) { // Only 5 driver slots
+          const driverNum = index + 1;
+          
+          // Set driver name
+          properties[`Driver ${driverNum} Name`] = {
+            rich_text: [
+              {
+                text: {
+                  content: driver.name
+                }
+              }
+            ]
+          };
+
+          // Set driver hours (if provided)
+          if (driver.hours !== undefined && driver.hours !== null && driver.hours !== '') {
+            const hours = parseFloat(driver.hours);
+            if (!isNaN(hours)) {
+              properties[`Driver ${driverNum} Hours`] = {
+                number: hours
+              };
             }
           }
-        ]
-      };
+        }
+      });
     }
 
-    // Add prepared by
-    if (preparedBy) {
-      properties['Prepared By'] = {
-        rich_text: [
-          {
-            text: {
-              content: preparedBy
-            }
-          }
-        ]
-      };
-    }
-
-    // Add timestamp
-    if (timestamp) {
-      properties['Submitted At'] = {
-        rich_text: [
-          {
-            text: {
-              content: timestamp
-            }
-          }
-        ]
-      };
-    }
+    console.log('Notion properties:', JSON.stringify(properties, null, 2));
 
     // Create page in Notion
     const response = await fetch('https://api.notion.com/v1/pages', {
@@ -178,37 +192,33 @@ module.exports = async (req, res) => {
     if (!response.ok) {
       console.error('Notion API error:', JSON.stringify(data, null, 2));
       
-      // Check for common errors
-      if (data.code === 'validation_error') {
-        return res.status(400).json({
-          success: false,
-          error: 'Database property mismatch',
-          details: data.message,
-          hint: 'Check that Notion database has correct property names and types'
-        });
+      // Extract specific error details
+      let errorDetails = '';
+      if (data.message) {
+        errorDetails = data.message;
       }
-
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to create entry in Notion',
-        details: data.message || 'Unknown error'
+      
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Database property mismatch',
+        details: errorDetails,
+        hint: 'Check that Notion database has correct property names and types'
       });
     }
 
-    // Success!
-    return res.status(200).json({
-      success: true,
+    console.log('Successfully created daily report in Notion');
+    return res.status(200).json({ 
+      success: true, 
       message: 'Daily report submitted successfully',
       pageId: data.id
     });
 
   } catch (error) {
-    console.error('Daily report API error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Server error',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    console.error('Error in daily report API:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      details: error.message
     });
   }
 };
