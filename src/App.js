@@ -1368,10 +1368,15 @@ function App() {
       const driverName = key.startsWith('Custom') ? status.name : key;
       
       if (driverName && (status.halfDay || status.fullDay)) {
+        // Calculate hours: half day = 4 hours, full day = 8 hours
+        let hours = 0;
+        if (status.fullDay) hours = 8;
+        else if (status.halfDay) hours = 4;
+        
         drivers.push({
           name: driverName,
-          halfDay: status.halfDay,
-          fullDay: status.fullDay
+          status: status.fullDay ? 'Working (Full Day)' : 'Working (Half Day)',
+          hours: hours
         });
       }
     });
