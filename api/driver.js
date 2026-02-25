@@ -62,54 +62,71 @@ module.exports = async (req, res) => {
 
 // Helper: Start Mileage
 async function handleStartMileage(req, res, apiKey, databaseId) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const { driverName, truckNumber, startMileage, currentState, date, startTime } = req.body;
+
+    if (!driverName || !truckNumber || !startMileage || !currentState || !date) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!databaseId) {
+      return res.status(500).json({ error: 'Missing NOTION_MILEAGE_DB_ID configuration' });
+    }
+
+    const properties = {
+      'Driver Name': { select: { name: driverName } },
+      'Truck Number': { select: { name: truckNumber } },
+      'Start Mileage': { number: parseFloat(startMileage) },
+      'Current State': { select: { name: currentState } },
+      'Date': { date: { start: date } },
+      'Status': { status: { name: 'In Progress' } }
+    };
+
+    if (startTime) {
+      properties['Start Time'] = { rich_text: [{ text: { content: startTime } }] };
+    }
+
+    const response = await fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'
+      },
+      body: JSON.stringify({
+        parent: { database_id: databaseId },
+        properties: properties
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Notion API error (start-mileage):', JSON.stringify(data, null, 2));
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to create entry',
+        details: data.message || 'Unknown error'
+      });
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      pageId: data.id,
+      message: 'Mileage entry started successfully'
+    });
+  } catch (error) {
+    console.error('Error in handleStartMileage:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Server error',
+      message: error.message 
+    });
   }
-
-  const { driverName, truckNumber, startMileage, currentState, date, startTime } = req.body;
-
-  if (!driverName || !truckNumber || !startMileage || !currentState || !date) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  const properties = {
-    'Driver Name': { select: { name: driverName } },
-    'Truck Number': { select: { name: truckNumber } },
-    'Start Mileage': { number: parseInt(startMileage) },
-    'Current State': { select: { name: currentState } },
-    'Date': { date: { start: date } },
-    'Status': { status: { name: 'In Progress' } }
-  };
-
-  if (startTime) {
-    properties['Start Time'] = { rich_text: [{ text: { content: startTime } }] };
-  }
-
-  const response = await fetch('https://api.notion.com/v1/pages', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28'
-    },
-    body: JSON.stringify({
-      parent: { database_id: databaseId },
-      properties: properties
-    })
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Notion API error:', data);
-    return res.status(500).json({ success: false, error: 'Failed to create entry' });
-  }
-
-  return res.status(200).json({ 
-    success: true, 
-    pageId: data.id,
-    message: 'Mileage entry started successfully'
-  });
 }
 
 // Helper: Complete Mileage
@@ -134,7 +151,7 @@ async function handleCompleteMileage(req, res, apiKey, databaseId) {
   }
 
   const properties = {
-    'End Mileage': { number: parseInt(endMileage) },
+    'End Mileage': { number: parseFloat(endMileage) },
     'End State': { select: { name: endState } },
     'Status': { status: { name: 'Done' } }
   };
