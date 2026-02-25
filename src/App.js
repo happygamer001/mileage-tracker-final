@@ -246,14 +246,20 @@ function App() {
       );
       
       const data = await response.json();
+      console.log('Check incomplete response:', data); // Debug log
       
-      if (data.found) {
-        setIncompleteEntry(data.entry);
+      if (data.hasIncomplete) {
+        setIncompleteEntry({
+          id: data.pageId,
+          date: data.date,
+          state: data.currentState,
+          mileageStart: data.startMileage
+        });
         // Pre-fill the form with the incomplete entry data
         setMileageData({
-          date: data.entry.date,
-          state: data.entry.state,
-          mileageStart: data.entry.mileageStart.toString(),
+          date: data.date,
+          state: data.currentState,
+          mileageStart: data.startMileage.toString(),
           mileageEnd: ''
         });
       } else {
@@ -460,10 +466,10 @@ function App() {
       const fetchRecentEntries = async () => {
         setLoadingEntries(true);
         try {
-          // Fetch both mileage and fuel entries
+          // Fetch both mileage and fuel entries (all historical data)
           const [mileageRes, fuelRes] = await Promise.all([
-            fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries?type=mileage&days=7'),
-            fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries?type=fuel&days=7')
+            fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries&type=mileage&days=9999'),
+            fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries&type=fuel&days=9999')
           ]);
           
           const mileageData = await mileageRes.json();
@@ -1102,6 +1108,45 @@ function App() {
     setIsLoading(true);
     
     const driverName = currentDriver === 'Other' ? customDriverName : currentDriver;
+    
+    // ALWAYS check for incomplete entry before starting a new shift
+    // This is critical for historical data entry
+    if (!incompleteEntry) {
+      try {
+        const checkResponse = await fetch(
+          `https://mileage-tracker-final.vercel.app/api/driver?action=check-incomplete&driver=${encodeURIComponent(driverName)}&truck=${encodeURIComponent(selectedTruck)}`
+        );
+        const checkData = await checkResponse.json();
+        
+        if (checkData.hasIncomplete) {
+          // Found an incomplete entry - block new entry creation
+          setIncompleteEntry({
+            id: checkData.pageId,
+            date: checkData.date,
+            state: checkData.currentState,
+            mileageStart: checkData.startMileage
+          });
+          
+          // Pre-fill the form
+          setMileageData({
+            date: checkData.date,
+            state: checkData.currentState,
+            mileageStart: checkData.startMileage.toString(),
+            mileageEnd: ''
+          });
+          
+          setSubmitStatus({ 
+            type: 'error', 
+            message: `⚠️ You have an active shift from ${checkData.date}. Please complete it before starting a new one.` 
+          });
+          setIsLoading(false);
+          return; // Stop here - don't create new entry
+        }
+      } catch (error) {
+        console.error('Error checking for incomplete entry:', error);
+        // Continue with new entry creation if check fails
+      }
+    }
     
     // If completing an existing entry
     if (incompleteEntry) {
@@ -2063,7 +2108,7 @@ function App() {
           <div className="week-container">
             <div className="week-header">
               <h2>✏️ Edit Entries</h2>
-              <p className="week-date-range">Last 7 days</p>
+              <p className="week-date-range">All Historical Entries</p>
             </div>
 
             {loadingEntries && (
@@ -2078,7 +2123,7 @@ function App() {
                 {/* Mileage Entries */}
                 <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#2d3748' }}>📍 Mileage Entries</h3>
                 {recentEntries.mileage.length === 0 ? (
-                  <p style={{ color: '#718096', textAlign: 'center', padding: '20px' }}>No mileage entries in the last 7 days.</p>
+                  <p style={{ color: '#718096', textAlign: 'center', padding: '20px' }}>No mileage entries found.</p>
                 ) : (
                   <div className="entries-list">
                     {recentEntries.mileage.map((entry) => (
@@ -2123,7 +2168,7 @@ function App() {
                 {/* Fuel Entries */}
                 <h3 style={{ marginTop: '30px', marginBottom: '15px', color: '#2d3748' }}>⛽ Fuel Entries</h3>
                 {recentEntries.fuel.length === 0 ? (
-                  <p style={{ color: '#718096', textAlign: 'center', padding: '20px' }}>No fuel entries in the last 7 days.</p>
+                  <p style={{ color: '#718096', textAlign: 'center', padding: '20px' }}>No fuel entries found.</p>
                 ) : (
                   <div className="entries-list">
                     {recentEntries.fuel.map((entry) => (
@@ -3618,16 +3663,33 @@ function App() {
 
             <div className="form-group">
               <label htmlFor="fuel-reading">End of Day Fuel Tank Reading:</label>
-              <input
-                id="fuel-reading"
-                type="number"
-                step="0.1"
-                value={dailyReportData.fuelReading}
-                onChange={(e) => setDailyReportData({...dailyReportData, fuelReading: e.target.value})}
-                placeholder="e.g., 14642"
-                required
-                className="number-input"
-              />
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input
+                  id="fuel-reading"
+                  type="number"
+                  step="0.1"
+                  value={dailyReportData.fuelReading}
+                  onChange={(e) => setDailyReportData({...dailyReportData, fuelReading: e.target.value})}
+                  placeholder="e.g., 14642"
+                  className="number-input"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setDailyReportData({...dailyReportData, fuelReading: '0'})}
+                  className="btn btn-secondary"
+                  style={{ 
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  No Reading
+                </button>
+              </div>
+              <small style={{ color: '#718096', fontSize: '12px', display: 'block', marginTop: '5px' }}>
+                Click "No Reading" if this data is not available
+              </small>
             </div>
 
             <div className="form-group">
