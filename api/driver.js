@@ -83,7 +83,7 @@ async function handleStartMileage(req, res, apiKey, databaseId) {
       'Mileage Start': { number: parseFloat(startMileage) },
       'Current State': { select: { name: currentState } },
       'Date': { date: { start: date } },
-      'Status': { status: { name: 'In Progress' } }
+      'Status': { status: { name: 'In progress' } }
     };
 
     if (startTime) {
@@ -152,13 +152,11 @@ async function handleCompleteMileage(req, res, apiKey, databaseId) {
 
   const properties = {
     'Mileage End': { number: parseFloat(endMileage) },
-    'End State': { select: { name: endState } },
+    'State': { select: { name: endState } },
     'Status': { status: { name: 'Done' } }
   };
 
-  if (endTime) {
-    properties['End Time'] = { rich_text: [{ text: { content: endTime } }] };
-  }
+  // Note: Not tracking End Time separately - timestamp is auto-captured
 
   // Optional job site timing fields
   if (jobSiteArrivalTime) {
@@ -322,7 +320,7 @@ async function handleCheckIncomplete(req, res, apiKey, databaseId) {
           },
           {
             property: 'Status',
-            status: { equals: 'In Progress' }
+            status: { equals: 'In progress' }
           }
         ]
       },
