@@ -144,12 +144,13 @@ function App() {
   }));
 
   // Driver work status - initialized with known drivers + 2 blanks
+  // FIX: All three statuses (halfDay, fullDay, absent) are included and mutually exclusive
   const [driverStatus, setDriverStatus] = useState({
-    'James': { halfDay: false, fullDay: false, absent: false },
-    'Matt': { halfDay: false, fullDay: false, absent: false },
-    'Calvin': { halfDay: false, fullDay: false, absent: false },
-    'Jerron': { halfDay: false, fullDay: false, absent: false },
-    'Nic': { halfDay: false, fullDay: false, absent: false },
+    'James':   { halfDay: false, fullDay: false, absent: false },
+    'Matt':    { halfDay: false, fullDay: false, absent: false },
+    'Calvin':  { halfDay: false, fullDay: false, absent: false },
+    'Jerron':  { halfDay: false, fullDay: false, absent: false },
+    'Nic':     { halfDay: false, fullDay: false, absent: false },
     'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
     'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
   });
@@ -1353,13 +1354,19 @@ function App() {
     setIsLoading(false);
   };
 
-  // Helper functions for Daily Report
+  // -------------------------------------------------------
+  // FIX 1: handleDriverCheckbox now correctly handles all
+  // three statuses as mutually exclusive options.
+  // Previously, 'absent' was never written to state.
+  // -------------------------------------------------------
   const handleDriverCheckbox = (driver, type) => {
     setDriverStatus({
       ...driverStatus,
       [driver]: {
+        ...driverStatus[driver],
         halfDay: type === 'halfDay' ? !driverStatus[driver].halfDay : false,
-        fullDay: type === 'fullDay' ? !driverStatus[driver].fullDay : false
+        fullDay: type === 'fullDay' ? !driverStatus[driver].fullDay : false,
+        absent:  type === 'absent'  ? !driverStatus[driver].absent  : false
       }
     });
   };
@@ -1406,21 +1413,30 @@ function App() {
       return;
     }
     
-    // Build drivers array from driver status
+    // -------------------------------------------------------
+    // FIX 2: Build drivers array including absent drivers, and
+    // use status strings that match the Notion select options:
+    // 'Full Day' | 'Half Day' | 'Absent'
+    // Previously, absent drivers were skipped entirely, and
+    // the status strings were 'Working (Full Day)' etc. which
+    // didn't match the API's VALID_STATUSES list.
+    // -------------------------------------------------------
     const drivers = [];
     Object.keys(driverStatus).forEach(key => {
       const status = driverStatus[key];
       const driverName = key.startsWith('Custom') ? status.name : key;
       
-      if (driverName && (status.halfDay || status.fullDay)) {
-        // Calculate hours: half day = 4 hours, full day = 8 hours
+      if (driverName && (status.halfDay || status.fullDay || status.absent)) {
         let hours = 0;
-        if (status.fullDay) hours = 8;
-        else if (status.halfDay) hours = 4;
+        let statusStr = '';
+
+        if (status.fullDay)  { hours = 8; statusStr = 'Full Day'; }
+        else if (status.halfDay) { hours = 4; statusStr = 'Half Day'; }
+        else if (status.absent)  { hours = 0; statusStr = 'Absent'; }
         
         drivers.push({
           name: driverName,
-          status: status.fullDay ? 'Working (Full Day)' : 'Working (Half Day)',
+          status: statusStr,
           hours: hours
         });
       }
@@ -1465,15 +1481,18 @@ function App() {
           issues: ''
         });
         
-        // Reset driver statuses
+        // -------------------------------------------------------
+        // FIX 3: Reset includes absent: false for all drivers.
+        // Previously the reset was missing absent entirely.
+        // -------------------------------------------------------
         setDriverStatus({
-          'James': { halfDay: false, fullDay: false },
-          'Matt': { halfDay: false, fullDay: false },
-          'Calvin': { halfDay: false, fullDay: false },
-          'Jerron': { halfDay: false, fullDay: false },
-          'Nic': { halfDay: false, fullDay: false },
-          'Custom1': { name: '', halfDay: false, fullDay: false },
-          'Custom2': { name: '', halfDay: false, fullDay: false }
+          'James':   { halfDay: false, fullDay: false, absent: false },
+          'Matt':    { halfDay: false, fullDay: false, absent: false },
+          'Calvin':  { halfDay: false, fullDay: false, absent: false },
+          'Jerron':  { halfDay: false, fullDay: false, absent: false },
+          'Nic':     { halfDay: false, fullDay: false, absent: false },
+          'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
+          'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
         });
       } else {
         // Show detailed error from backend
