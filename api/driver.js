@@ -80,7 +80,7 @@ async function handleStartMileage(req, res, apiKey, databaseId) {
     const properties = {
       'Driver Name': { select: { name: driverName } },
       'Truck Number': { select: { name: truckNumber } },
-      'Start Mileage': { number: parseFloat(startMileage) },
+      'Mileage Start': { number: parseFloat(startMileage) },
       'Current State': { select: { name: currentState } },
       'Date': { date: { start: date } },
       'Status': { status: { name: 'In Progress' } }
@@ -151,8 +151,8 @@ async function handleCompleteMileage(req, res, apiKey, databaseId) {
   }
 
   const properties = {
-    'End Mileage': { number: parseFloat(endMileage) },
-    'End State': { select: { name: endState } },
+    'Mileage End': { number: parseFloat(endMileage) },
+    'State': { select: { name: endState } },
     'Status': { status: { name: 'Done' } }
   };
 
@@ -348,7 +348,7 @@ async function handleCheckIncomplete(req, res, apiKey, databaseId) {
       success: true,
       hasIncomplete: true,
       pageId: entry.id,
-      startMileage: entry.properties['Start Mileage']?.number || 0,
+      startMileage: entry.properties['Mileage Start']?.number || 0,
       currentState: entry.properties['Current State']?.select?.name || '',
       date: entry.properties['Date']?.date?.start || ''
     });
@@ -412,10 +412,10 @@ async function handleGetDailyTrips(req, res, apiKey, databaseId) {
 
   const trips = data.results.map(entry => ({
     id: entry.id,
-    startMileage: entry.properties['Start Mileage']?.number || 0,
-    endMileage: entry.properties['End Mileage']?.number || 0,
+    startMileage: entry.properties['Mileage Start']?.number || 0,
+    endMileage: entry.properties['Mileage End']?.number || 0,
     startState: entry.properties['Current State']?.select?.name || '',
-    endState: entry.properties['End State']?.select?.name || '',
+    endState: entry.properties['State']?.select?.name || '',
     crossedStateLine: entry.properties['Crossed State Line']?.checkbox || false
   }));
 
