@@ -84,21 +84,15 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
         and: [
           {
             property: 'Date',
-            date: {
-              on_or_after: startDate
-            }
+            date: { on_or_after: startDate }
           },
           {
             property: 'Date',
-            date: {
-              on_or_before: endDate
-            }
+            date: { on_or_before: endDate }
           },
           {
             property: 'Status',
-            status: {
-              equals: 'Done'
-            }
+            status: { equals: 'Done' }
           }
         ]
       },
@@ -134,15 +128,11 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
             and: [
               {
                 property: 'Date',
-                date: {
-                  on_or_after: startDate
-                }
+                date: { on_or_after: startDate }
               },
               {
                 property: 'Date',
-                date: {
-                  on_or_before: endDate
-                }
+                date: { on_or_before: endDate }
               }
             ]
           }
@@ -152,10 +142,9 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
       const concreteResponseData = await concreteResponse.json();
       
       if (concreteResponse.ok && concreteResponseData.results) {
-        // Group concrete yardage by date
         concreteResponseData.results.forEach(entry => {
-          const date = entry.properties.Date?.date?.start;
-          const yards = entry.properties['Concrete Delivered (yards)']?.number || 0;
+          const date = entry.properties['Report Date']?.date?.start;
+          const yards = entry.properties['Total Yards Out']?.number || 0;
           
           if (date) {
             if (!concreteData[date]) {
@@ -167,7 +156,6 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
       }
     } catch (error) {
       console.error('Error fetching concrete data:', error);
-      // Continue without concrete data if there's an error
     }
   }
 
@@ -176,7 +164,7 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
   const truckSet = new Set();
 
   data.results.forEach(entry => {
-    const date = entry.properties.Date?.date?.start;
+    const date = entry.properties['Date']?.date?.start;
     const truck = entry.properties['Truck Number']?.select?.name;
     const driver = entry.properties['Driver Name']?.select?.name;
 
@@ -201,8 +189,8 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
   });
 
   // Convert to array and add capacity calculations
-  const totalTrucks = truckSet.size || 4; // Default to 4 if no data
-  const avgLoadsPerTruck = 12.5; // Industry standard
+  const totalTrucks = truckSet.size || 4;
+  const avgLoadsPerTruck = 12.5;
   const maxCapacity = totalTrucks * avgLoadsPerTruck;
 
   const dailyArray = Object.values(dailyData).map(day => ({
@@ -226,7 +214,6 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
   const peakDay = dailyArray.reduce((max, day) => day.loads > max.loads ? day : max, { loads: 0 });
   const peakYardsDay = dailyArray.reduce((max, day) => day.concreteYards > max.concreteYards ? day : max, { concreteYards: 0 });
 
-  // Calculate trend (compare first half to second half)
   const midpoint = Math.floor(dailyArray.length / 2);
   const firstHalf = dailyArray.slice(0, midpoint);
   const secondHalf = dailyArray.slice(midpoint);
@@ -244,24 +231,15 @@ async function handleCapacityPlanning(req, res, apiKey, databaseId, dailyReportD
 
   return res.status(200).json({
     success: true,
-    dateRange: {
-      start: startDate,
-      end: endDate
-    },
+    dateRange: { start: startDate, end: endDate },
     summary: {
       totalLoads,
       totalConcreteYards,
       avgDailyLoads,
       avgDailyYards,
       avgUtilization,
-      peakDay: {
-        date: peakDay.date,
-        loads: peakDay.loads
-      },
-      peakYardsDay: {
-        date: peakYardsDay.date,
-        yards: peakYardsDay.concreteYards
-      },
+      peakDay: { date: peakDay.date, loads: peakDay.loads },
+      peakYardsDay: { date: peakYardsDay.date, yards: peakYardsDay.concreteYards },
       trendPercent,
       totalTrucks,
       maxCapacity
@@ -276,7 +254,6 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
     return res.status(500).json({ error: 'Missing NOTION_MILEAGE_DB_ID' });
   }
 
-  // Get current week's data (last 7 days)
   const today = new Date();
   const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(today.getDate() - 7);
@@ -296,15 +273,11 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
         and: [
           {
             property: 'Date',
-            date: {
-              on_or_after: startDate
-            }
+            date: { on_or_after: startDate }
           },
           {
             property: 'Status',
-            status: {
-              equals: 'Done'
-            }
+            status: { equals: 'Done' }
           }
         ]
       }
@@ -318,7 +291,7 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
     return res.status(500).json({ error: 'Failed to fetch week data' });
   }
 
-  // Fetch concrete yardage from daily reports if database ID exists
+  // Fetch concrete yardage from daily reports
   let concreteDataByDate = {};
   if (dailyReportDatabaseId) {
     try {
@@ -331,14 +304,8 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
         },
         body: JSON.stringify({
           filter: {
-            and: [
-              {
-                property: 'Date',
-                date: {
-                  on_or_after: startDate
-                }
-              }
-            ]
+            property: 'Report Date',
+            date: { on_or_after: startDate }
           }
         })
       });
@@ -347,8 +314,8 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
       
       if (concreteResponse.ok && concreteResponseData.results) {
         concreteResponseData.results.forEach(entry => {
-          const date = entry.properties.Date?.date?.start;
-          const yards = entry.properties['Concrete Delivered (yards)']?.number || 0;
+          const date = entry.properties['Report Date']?.date?.start;
+          const yards = entry.properties['Total Yards Out']?.number || 0;
           
           if (date) {
             if (!concreteDataByDate[date]) {
@@ -368,8 +335,8 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
 
   data.results.forEach(entry => {
     const driver = entry.properties['Driver Name']?.select?.name;
-    const startMileage = entry.properties['Start Mileage']?.number || 0;
-    const endMileage = entry.properties['End Mileage']?.number || 0;
+    const mileageStart = entry.properties['Mileage Start']?.number || 0;  // FIXED
+    const mileageEnd = entry.properties['Mileage End']?.number || 0;      // FIXED
     const crossedState = entry.properties['Crossed State Line']?.checkbox || false;
 
     if (!driver) return;
@@ -384,7 +351,7 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
     }
 
     driverStats[driver].totalLoads += 1;
-    driverStats[driver].totalMiles += (endMileage - startMileage);
+    driverStats[driver].totalMiles += (mileageEnd - mileageStart);
     if (crossedState) driverStats[driver].stateCrossings += 1;
   });
 
@@ -393,10 +360,7 @@ async function handleWeekAtAGlance(req, res, apiKey, databaseId, dailyReportData
 
   return res.status(200).json({
     success: true,
-    weekRange: {
-      start: startDate,
-      end: endDate
-    },
+    weekRange: { start: startDate, end: endDate },
     drivers: driverArray,
     totalConcreteYards: totalConcreteYards
   });
@@ -408,7 +372,6 @@ async function handleFleetStatus(req, res, apiKey, databaseId) {
     return res.status(500).json({ error: 'Missing NOTION_MILEAGE_DB_ID' });
   }
 
-  // Get today's in-progress entries
   const today = new Date().toISOString().split('T')[0];
 
   const response = await fetch('https://api.notion.com/v1/databases/' + databaseId + '/query', {
@@ -423,15 +386,11 @@ async function handleFleetStatus(req, res, apiKey, databaseId) {
         and: [
           {
             property: 'Date',
-            date: {
-              equals: today
-            }
+            date: { equals: today }
           },
           {
             property: 'Status',
-            status: {
-              equals: 'In Progress'
-            }
+            status: { equals: 'In Progress' }
           }
         ]
       }
@@ -448,7 +407,7 @@ async function handleFleetStatus(req, res, apiKey, databaseId) {
   const activeDrivers = data.results.map(entry => ({
     driver: entry.properties['Driver Name']?.select?.name || 'Unknown',
     truck: entry.properties['Truck Number']?.select?.name || 'Unknown',
-    startMileage: entry.properties['Start Mileage']?.number || 0,
+    startMileage: entry.properties['Mileage Start']?.number || 0,         // FIXED
     currentState: entry.properties['Current State']?.select?.name || 'Unknown',
     startTime: entry.properties['Start Time']?.rich_text?.[0]?.text?.content || ''
   }));
@@ -490,9 +449,7 @@ async function handleRecentEntries(req, res, apiKey, mileageDatabaseId, fuelData
     body: JSON.stringify({
       filter: {
         property: 'Date',
-        date: {
-          on_or_after: startDate
-        }
+        date: { on_or_after: startDate }
       },
       sorts: [
         {
@@ -519,10 +476,11 @@ async function handleRecentEntries(req, res, apiKey, mileageDatabaseId, fuelData
       driver: entry.properties['Driver Name']?.select?.name || '',
       truck: entry.properties['Truck Number']?.select?.name || '',
       date: entry.properties['Date']?.date?.start || '',
-      startMileage: entry.properties['Start Mileage']?.number || 0,
-      endMileage: entry.properties['End Mileage']?.number || 0,
-      startState: entry.properties['Current State']?.select?.name || '',
-      endState: entry.properties['End State']?.select?.name || '',
+      mileageStart: entry.properties['Mileage Start']?.number || 0,       // FIXED
+      mileageEnd: entry.properties['Mileage End']?.number || 0,           // FIXED
+      totalMiles: (entry.properties['Mileage End']?.number || 0) -
+                  (entry.properties['Mileage Start']?.number || 0),       // FIXED
+      state: entry.properties['Current State']?.select?.name || '',       // FIXED
       status: entry.properties['Status']?.status?.name || ''
     }));
   } else {
