@@ -156,10 +156,6 @@ async function handleCompleteMileage(req, res, apiKey, databaseId) {
     'Status': { status: { name: 'Done' } }
   };
 
-  if (endTime) {
-    properties['End Time'] = { rich_text: [{ text: { content: endTime } }] };
-  }
-
   if (jobSiteArrivalTime) {
     properties['Job Site Arrival'] = { rich_text: [{ text: { content: jobSiteArrivalTime } }] };
   }
