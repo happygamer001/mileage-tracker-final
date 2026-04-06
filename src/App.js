@@ -2975,12 +2975,15 @@ function App() {
           }
           tripsByState[tripState].push(trip);
           
+          const tripStart = trip.mileageStart ?? trip.startMileage ?? 0;
+          const tripEnd   = trip.mileageEnd   ?? trip.endMileage   ?? 0;
+
           // Track overall start and end
-          if (overallStart === null || trip.mileageStart < overallStart) {
-            overallStart = trip.mileageStart;
+          if (overallStart === null || tripStart < overallStart) {
+            overallStart = tripStart;
           }
-          if (overallEnd === null || trip.mileageEnd > overallEnd) {
-            overallEnd = trip.mileageEnd;
+          if (overallEnd === null || tripEnd > overallEnd) {
+            overallEnd = tripEnd;
           }
         });
       }
@@ -3015,13 +3018,13 @@ function App() {
                     {Object.keys(tripsByState).map(state => {
                       const stateTrips = tripsByState[state];
                       const stateMiles = stateTrips.reduce((sum, trip) => {
-                        const miles = (trip.totalMiles !== undefined)
-                          ? trip.totalMiles
-                          : (trip.mileageEnd - trip.mileageStart);
+                        const s = trip.mileageStart ?? trip.startMileage ?? 0;
+                        const e = trip.mileageEnd   ?? trip.endMileage   ?? 0;
+                        const miles = trip.totalMiles !== undefined ? trip.totalMiles : (e - s);
                         return sum + miles;
                       }, 0);
-                      const stateStart = Math.min(...stateTrips.map(t => t.mileageStart));
-                      const stateEnd = Math.max(...stateTrips.map(t => t.mileageEnd));
+                      const stateStart = Math.min(...stateTrips.map(t => t.mileageStart ?? t.startMileage ?? 0));
+                      const stateEnd   = Math.max(...stateTrips.map(t => t.mileageEnd   ?? t.endMileage   ?? 0));
                       
                       return (
                         <div key={state} className="state-section">
