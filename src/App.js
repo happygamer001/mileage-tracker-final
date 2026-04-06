@@ -2165,15 +2165,15 @@ function App() {
                           </div>
                           <div className="entry-row">
                             <span>Start:</span>
-                            <span>{entry.mileageStart.toFixed(1)}</span>
+                            <span>{(entry.mileageStart || 0).toFixed(1)}</span>
                           </div>
                           <div className="entry-row">
                             <span>End:</span>
-                            <span>{entry.mileageEnd > 0 ? entry.mileageEnd.toFixed(1) : 'Incomplete'}</span>
+                            <span>{entry.mileageEnd > 0 ? (entry.mileageEnd || 0).toFixed(1) : 'Incomplete'}</span>
                           </div>
                           <div className="entry-row">
                             <span>Total:</span>
-                            <span className="entry-highlight">{entry.totalMiles.toFixed(1)} mi</span>
+                            <span className="entry-highlight">{(entry.totalMiles || 0).toFixed(1)} mi</span>
                           </div>
                         </div>
                         <button 
@@ -2969,10 +2969,11 @@ function App() {
       
       if (completionData.trips && completionData.trips.length > 0) {
         completionData.trips.forEach(trip => {
-          if (!tripsByState[trip.state]) {
-            tripsByState[trip.state] = [];
+          const tripState = trip.startState || trip.state || 'Unknown';
+          if (!tripsByState[tripState]) {
+            tripsByState[tripState] = [];
           }
-          tripsByState[trip.state].push(trip);
+          tripsByState[tripState].push(trip);
           
           // Track overall start and end
           if (overallStart === null || trip.mileageStart < overallStart) {
@@ -3013,7 +3014,12 @@ function App() {
                     <div className="state-breakdown-header">State Breakdown:</div>
                     {Object.keys(tripsByState).map(state => {
                       const stateTrips = tripsByState[state];
-                      const stateMiles = stateTrips.reduce((sum, trip) => sum + trip.totalMiles, 0);
+                      const stateMiles = stateTrips.reduce((sum, trip) => {
+                        const miles = (trip.totalMiles !== undefined)
+                          ? trip.totalMiles
+                          : (trip.mileageEnd - trip.mileageStart);
+                        return sum + miles;
+                      }, 0);
                       const stateStart = Math.min(...stateTrips.map(t => t.mileageStart));
                       const stateEnd = Math.max(...stateTrips.map(t => t.mileageEnd));
                       
