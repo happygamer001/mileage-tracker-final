@@ -390,7 +390,7 @@ async function handleFleetStatus(req, res, apiKey, databaseId) {
           },
           {
             property: 'Status',
-            status: { equals: 'In Progress' }
+            status: { equals: 'In progress' }
           }
         ]
       }
