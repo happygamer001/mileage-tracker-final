@@ -83,7 +83,7 @@ async function handleStartMileage(req, res, apiKey, databaseId) {
       'Mileage Start': { number: parseFloat(startMileage) },
       'Current State': { select: { name: currentState } },
       'Date': { date: { start: date } },
-      'Status': { status: { name: 'In Progress' } }
+      'Status': { status: { name: 'In progress' } }
     };
 
     if (startTime) {
@@ -321,7 +321,7 @@ async function handleCheckIncomplete(req, res, apiKey, databaseId) {
           },
           {
             property: 'Status',
-            status: { equals: 'In Progress' }
+            status: { equals: 'In progress' }
           }
         ]
       },
