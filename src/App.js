@@ -238,6 +238,12 @@ function App() {
   const [jobSiteDepartureTime, setJobSiteDepartureTime] = useState(null);
   const [showJobSiteButtons, setShowJobSiteButtons] = useState(false);
 
+  // NEW: Stores the last ending mileage for the selected truck.
+  // OLD: Did not exist — mileageStart was always blank when starting a new shift.
+  // NEW: Pre-populated from the truck's most recent completed entry so drivers
+  //      don't have to manually read and re-enter the odometer each time.
+  const [lastTruckMileage, setLastTruckMileage] = useState(null);
+
   // Check for incomplete mileage entry - wrapped in useCallback
   const checkForIncompleteEntry = useCallback(async () => {
     setCheckingIncomplete(true);
@@ -799,6 +805,29 @@ function App() {
     }
   };
 
+  // NEW: Fetches the last ending mileage for a truck after pre-trip checklist completes.
+  // OLD: Did not exist — mileageStart was always blank.
+  // NEW: Calls get-last-mileage API filtered by truck only, then pre-populates mileageStart.
+  //      Driver can still edit the value manually if needed.
+  const fetchLastTruckMileage = async (truck) => {
+    try {
+      const response = await fetch(
+        `https://mileage-tracker-final.vercel.app/api/driver?action=get-last-mileage&truck=${encodeURIComponent(truck)}`
+      );
+      const data = await response.json();
+      if (data.success && data.hasLastMileage && data.lastEndMileage) {
+        setLastTruckMileage(data.lastEndMileage);
+        setMileageData(prev => ({
+          ...prev,
+          mileageStart: data.lastEndMileage.toString()
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching last truck mileage:', error);
+      // Silently fail — driver will just enter mileage manually
+    }
+  };
+
   // Handle login
   const handleLogin = () => {
     const isBatchMgr = BATCH_MANAGERS.includes(currentDriver);
@@ -824,6 +853,7 @@ function App() {
     setSelectedTruck('');
     setTrackingMode(null);
     setIncompleteEntry(null);
+    setLastTruckMileage(null); // NEW: clear pre-populated mileage on logout
   };
 
   // Handle truck selection
@@ -866,6 +896,10 @@ function App() {
       if (response.ok) {
         // Checklist complete, proceed to mode selection
         setShowPreTripChecklist(false);
+        // NEW: Pre-populate starting mileage from truck's last completed shift
+        // OLD: mileageStart was always blank after checklist
+        // NEW: Fetches last ending mileage for this truck so driver doesn't have to re-enter it
+        await fetchLastTruckMileage(selectedTruck);
         // Reset checklist for next time
         setPreTripChecklist({
           tires: false,
@@ -937,6 +971,10 @@ function App() {
       if (response.ok) {
         // Checklist bypassed, proceed to mode selection
         setShowPreTripChecklist(false);
+        // NEW: Pre-populate starting mileage from truck's last completed shift
+        // OLD: mileageStart was always blank after checklist bypass
+        // NEW: Fetches last ending mileage for this truck so driver doesn't have to re-enter it
+        await fetchLastTruckMileage(selectedTruck);
         // Reset checklist
         setPreTripChecklist({
           tires: false,
@@ -995,6 +1033,7 @@ function App() {
       });
     } else if (selectedTruck) {
       setSelectedTruck('');
+      setLastTruckMileage(null); // NEW: clear pre-populated mileage when switching trucks
     }
   };
 
@@ -3352,6 +3391,13 @@ function App() {
                   required
                   className="text-input"
                 />
+                {/* NEW: Show a note if the value was pre-populated from last shift */}
+                {/* OLD: No note was shown — field was always blank */}
+                {lastTruckMileage && mileageData.mileageStart === lastTruckMileage.toString() && (
+                  <small style={{ color: '#38a169', fontWeight: '600', marginTop: '4px', display: 'block' }}>
+                    ✅ Pre-filled from last shift — verify and adjust if needed
+                  </small>
+                )}
               </div>
             )}
 
