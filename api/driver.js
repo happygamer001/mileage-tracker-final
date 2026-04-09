@@ -47,6 +47,12 @@ module.exports = async (req, res) => {
       case 'get-daily-trips':
         return await handleGetDailyTrips(req, res, notionApiKey, mileageDatabaseId);
       
+      // NEW: Fetches the most recent completed ending mileage for a truck
+      // Used to pre-populate starting mileage on new shifts
+      // Queries by truck only (not driver) since the odometer lives on the truck
+      case 'get-last-mileage':
+        return await handleGetLastMileage(req, res, notionApiKey, mileageDatabaseId);
+      
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
@@ -419,5 +425,86 @@ async function handleGetDailyTrips(req, res, apiKey, databaseId) {
     success: true,
     trips: trips,
     totalTrips: trips.length
+  });
+}
+
+// Helper: Get Last Mileage for a Truck
+// OLD: Did not exist — starting mileage was always blank
+// NEW: Queries Notion for the most recent Done entry filtered by truck number only.
+//      Returns Mileage End so it can be pre-populated as the next shift's starting mileage.
+//      Filtered by truck (not driver) because the odometer lives on the truck, not the person.
+async function handleGetLastMileage(req, res, apiKey, databaseId) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { truck } = req.query;
+
+  if (!truck) {
+    return res.status(400).json({ error: 'Missing truck parameter' });
+  }
+
+  if (!databaseId) {
+    return res.status(500).json({ error: 'Missing NOTION_MILEAGE_DB_ID configuration' });
+  }
+
+  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Notion-Version': '2022-06-28'
+    },
+    body: JSON.stringify({
+      filter: {
+        and: [
+          {
+            property: 'Truck Number',
+            select: { equals: truck }
+          },
+          {
+            property: 'Status',
+            status: { equals: 'Done' }
+          }
+        ]
+      },
+      sorts: [
+        {
+          // Sort by date descending to get the most recent completed shift
+          property: 'Date',
+          direction: 'descending'
+        }
+      ],
+      page_size: 1
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('Notion API error (get-last-mileage):', data);
+    return res.status(500).json({ success: false, error: 'Failed to fetch last mileage' });
+  }
+
+  if (data.results && data.results.length > 0) {
+    const entry = data.results[0];
+    const lastEndMileage = entry.properties['Mileage End']?.number || null;
+    const lastDate = entry.properties['Date']?.date?.start || '';
+    const lastDriver = entry.properties['Driver Name']?.select?.name || '';
+
+    return res.status(200).json({
+      success: true,
+      hasLastMileage: lastEndMileage !== null,
+      lastEndMileage: lastEndMileage,
+      lastDate: lastDate,
+      lastDriver: lastDriver
+    });
+  }
+
+  // No previous entry found for this truck — new shift will start blank
+  return res.status(200).json({
+    success: true,
+    hasLastMileage: false,
+    lastEndMileage: null
   });
 }
