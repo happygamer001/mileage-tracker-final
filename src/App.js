@@ -805,6 +805,45 @@ function App() {
     }
   };
 
+  // NEW: Routes the driver correctly after pre-trip completes (or is skipped).
+  // OLD: Did not exist — driver always went to mode selection, then checkForIncompleteEntry
+  //      fired only after they clicked "Track Mileage", causing a double-entry confusion.
+  // NEW: Immediately checks for an in-progress shift for this driver + truck.
+  //      If found  → sets incompleteEntry and jumps straight to mileage "Complete Shift" screen.
+  //      If not found → pre-populates starting mileage from last shift and shows mode selection.
+  const checkAndRouteAfterPretrip = async (truck) => {
+    const driverName = currentDriver === 'Other' ? customDriverName : currentDriver;
+    try {
+      const response = await fetch(
+        `https://mileage-tracker-final.vercel.app/api/driver?action=check-incomplete&driver=${encodeURIComponent(driverName)}&truck=${encodeURIComponent(truck)}`
+      );
+      const data = await response.json();
+
+      if (data.hasIncomplete) {
+        // Active shift found — go straight to "Complete Shift" screen, skip mode selection
+        setIncompleteEntry({
+          id: data.pageId,
+          date: data.date,
+          state: data.currentState,
+          mileageStart: data.startMileage
+        });
+        setMileageData({
+          date: data.date,
+          state: data.currentState,
+          mileageStart: data.startMileage.toString(),
+          mileageEnd: ''
+        });
+        setTrackingMode('mileage');
+      } else {
+        // No active shift — pre-populate start mileage for new shift, show mode selection
+        await fetchLastTruckMileage(truck);
+      }
+    } catch (error) {
+      console.error('Error in checkAndRouteAfterPretrip:', error);
+      // Fall through to normal mode selection on error
+    }
+  };
+
   // NEW: Fetches the last ending mileage for a truck after pre-trip checklist completes.
   // OLD: Did not exist — mileageStart was always blank.
   // NEW: Calls get-last-mileage API filtered by truck only, then pre-populates mileageStart.
@@ -857,10 +896,27 @@ function App() {
   };
 
   // Handle truck selection
+  // OLD: Always showed pre-trip checklist every time a truck was selected
+  // NEW: Checks localStorage for pretrip_${truck}_${date} key.
+  //      If found (pre-trip already done today) → skips checklist and routes directly.
+  //      If not found → shows pre-trip checklist as normal.
   const handleTruckSelect = (truck) => {
     setAnimationClass('slide-in-right');
     setSelectedTruck(truck);
-    setShowPreTripChecklist(true); // Show pre-trip checklist first
+
+    const today = getCentralDateString();
+    const preTripKey = `pretrip_${truck}_${today}`;
+    const alreadyDone = localStorage.getItem(preTripKey);
+
+    if (alreadyDone) {
+      // Pre-trip already submitted today — skip straight to routing
+      setShowPreTripChecklist(false);
+      // Delay slightly so selectedTruck state has settled before async call
+      setTimeout(() => checkAndRouteAfterPretrip(truck), 100);
+    } else {
+      // First time today for this truck — show pre-trip checklist
+      setShowPreTripChecklist(true);
+    }
   };
 
   // Handle mode selection
@@ -896,10 +952,13 @@ function App() {
       if (response.ok) {
         // Checklist complete, proceed to mode selection
         setShowPreTripChecklist(false);
-        // NEW: Pre-populate starting mileage from truck's last completed shift
-        // OLD: mileageStart was always blank after checklist
-        // NEW: Fetches last ending mileage for this truck so driver doesn't have to re-enter it
-        await fetchLastTruckMileage(selectedTruck);
+        // NEW: Save pre-trip completion to localStorage so it's skipped on subsequent logins today
+        // OLD: Pre-trip was never saved — it showed every single login
+        // NEW: Key is pretrip_${truck}_${date} so it resets automatically each new day
+        const today = getCentralDateString();
+        localStorage.setItem(`pretrip_${selectedTruck}_${today}`, 'true');
+        // NEW: Route directly based on whether an active shift exists
+        await checkAndRouteAfterPretrip(selectedTruck);
         // Reset checklist for next time
         setPreTripChecklist({
           tires: false,
@@ -971,10 +1030,13 @@ function App() {
       if (response.ok) {
         // Checklist bypassed, proceed to mode selection
         setShowPreTripChecklist(false);
-        // NEW: Pre-populate starting mileage from truck's last completed shift
-        // OLD: mileageStart was always blank after checklist bypass
-        // NEW: Fetches last ending mileage for this truck so driver doesn't have to re-enter it
-        await fetchLastTruckMileage(selectedTruck);
+        // NEW: Save pre-trip completion to localStorage so it's skipped on subsequent logins today
+        // OLD: Pre-trip was never saved — it showed every single login
+        // NEW: Key is pretrip_${truck}_${date} so it resets automatically each new day
+        const today = getCentralDateString();
+        localStorage.setItem(`pretrip_${selectedTruck}_${today}`, 'true');
+        // NEW: Route directly based on whether an active shift exists
+        await checkAndRouteAfterPretrip(selectedTruck);
         // Reset checklist
         setPreTripChecklist({
           tires: false,
