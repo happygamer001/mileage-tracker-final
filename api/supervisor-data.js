@@ -490,6 +490,10 @@ async function handleRecentEntries(req, res, apiKey, mileageDatabaseId, fuelData
       truck: entry.properties['Truck Number']?.select?.name || '',
       date: entry.properties['Date']?.date?.start || '',
       gallons: entry.properties['Gallons']?.number || 0,
+      // FIX: Added cost field — was missing, causing toFixed crash in Edit Entries UI
+      // OLD: cost was not returned, entry.cost was undefined → crash on .toFixed(2)
+      // NEW: cost is returned from Notion, defaults to 0 if not present
+      cost: entry.properties['Total Cost']?.number || 0,
       location: entry.properties['Location']?.rich_text?.[0]?.text?.content || ''
     }));
   }
