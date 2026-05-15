@@ -21,6 +21,7 @@ const DRIVERS = [
   'James',
   'Nic',
   'Jerron',
+  'Test',
   'Other'
 ];
 
@@ -155,6 +156,7 @@ function App() {
     'Nic':     { halfDay: false, fullDay: false, absent: false },
     'Drew':    { halfDay: false, fullDay: false, absent: false },
     'Derik':   { halfDay: false, fullDay: false, absent: false },
+    'Test':    { halfDay: false, fullDay: false, absent: false },
     'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
     'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
   });
@@ -1614,6 +1616,7 @@ function App() {
           'Nic':     { halfDay: false, fullDay: false, absent: false },
           'Drew':    { halfDay: false, fullDay: false, absent: false },
           'Derik':   { halfDay: false, fullDay: false, absent: false },
+          'Test':    { halfDay: false, fullDay: false, absent: false },
           'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
           'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
         });
@@ -3674,7 +3677,7 @@ function App() {
 
   // Daily Report form
   if (trackingMode === 'daily-report') {
-    const predefinedDrivers = ['James', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew', 'Derik'];
+    const predefinedDrivers = ['James', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew', 'Derik', 'Test'];
     const customDrivers = ['Custom1', 'Custom2'];
     
     return (
