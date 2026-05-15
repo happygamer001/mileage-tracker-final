@@ -478,22 +478,34 @@ function App() {
         setLoadingEntries(true);
         try {
           // Fetch both mileage and fuel entries (all historical data)
+          // FIX: Previously used Promise.all which caused BOTH to fail if either failed.
+          // OLD: if (mileageData.success && fuelData.success) — nothing shown if either fails
+          // NEW: Each fetch is handled independently so a fuel DB error doesn't hide mileage entries
           const [mileageRes, fuelRes] = await Promise.all([
             fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries&type=mileage&days=9999'),
             fetch('https://mileage-tracker-final.vercel.app/api/supervisor-data?view=recent-entries&type=fuel&days=9999')
           ]);
-          
+
           const mileageData = await mileageRes.json();
           const fuelData = await fuelRes.json();
-          
-          if (mileageData.success && fuelData.success) {
-            setRecentEntries({
-              mileage: mileageData.entries || [],
-              fuel: fuelData.entries || []
-            });
+
+          // Show whatever data is available — don't require both to succeed
+          setRecentEntries({
+            mileage: mileageData.success ? (mileageData.entries || []) : [],
+            fuel: fuelData.success ? (fuelData.entries || []) : []
+          });
+
+          // Log failures so they show up in Vercel logs for debugging
+          if (!mileageData.success) {
+            console.error('Failed to load mileage entries:', mileageData.error);
+          }
+          if (!fuelData.success) {
+            console.error('Failed to load fuel entries:', fuelData.error);
           }
         } catch (error) {
           console.error('Error fetching recent entries:', error);
+          // Set empty arrays so the UI renders with "No entries found" instead of blank
+          setRecentEntries({ mileage: [], fuel: [] });
         } finally {
           setLoadingEntries(false);
         }
@@ -2245,6 +2257,12 @@ function App() {
               <div className="info-message">
                 <span className="loading-spinner"></span>
                 Loading entries...
+              </div>
+            )}
+
+            {!loadingEntries && !recentEntries && (
+              <div className="info-message" style={{ color: '#e53e3e', borderColor: '#e53e3e', background: '#fff5f5' }}>
+                ❌ Failed to load entries. Check your Vercel environment variables (NOTION_MILEAGE_DB_ID, NOTION_FUEL_DB_ID) and try again.
               </div>
             )}
 
