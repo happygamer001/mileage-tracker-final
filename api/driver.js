@@ -303,45 +303,57 @@ async function handleCheckIncomplete(req, res, apiKey, databaseId) {
     return res.status(400).json({ error: 'Missing driver or truck parameter' });
   }
 
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28'
-    },
-    body: JSON.stringify({
-      filter: {
-        and: [
-          {
-            property: 'Driver Name',
-            select: { equals: driver }
-          },
-          {
-            property: 'Truck Number',
-            select: { equals: truck }
-          },
-          {
-            property: 'Status',
-            status: { equals: 'In progress' }
-          }
-        ]
-      },
-      sorts: [
-        {
-          property: 'Date',
-          direction: 'descending'
-        }
-      ],
-      page_size: 1
-    })
-  });
+  // FIX: First try exact driver + truck match (correct for normal flow).
+  // If nothing found, fall back to driver-only search.
+  // OLD: Only queried driver + truck — if driver switched trucks mid-day or
+  //      had a name mismatch from 'Other' entries, the shift was never found.
+  // NEW: Falls back to driver-only so active shifts are always surfaced.
+  const buildQuery = (includeDriver, includeTruck) => {
+    const filters = [];
+    if (includeDriver) {
+      filters.push({ property: 'Driver Name', select: { equals: driver } });
+    }
+    if (includeTruck) {
+      filters.push({ property: 'Truck Number', select: { equals: truck } });
+    }
+    filters.push({ property: 'Status', status: { equals: 'In progress' } });
+    return filters.length === 1 ? filters[0] : { and: filters };
+  };
 
-  const data = await response.json();
+  const queryNotion = async (filter) => {
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28'
+      },
+      body: JSON.stringify({
+        filter,
+        sorts: [{ property: 'Date', direction: 'descending' }],
+        page_size: 1
+      })
+    });
+    return response;
+  };
+
+  // First attempt: driver + truck (most specific)
+  let response = await queryNotion(buildQuery(true, true));
+  let data = await response.json();
 
   if (!response.ok) {
     console.error('Notion API error:', data);
     return res.status(500).json({ success: false, error: 'Failed to check incomplete entries' });
+  }
+
+  // If nothing found with driver+truck, try driver-only as fallback
+  if (!data.results || data.results.length === 0) {
+    response = await queryNotion(buildQuery(true, false));
+    data = await response.json();
+    if (!response.ok) {
+      console.error('Notion API error (fallback):', data);
+      return res.status(500).json({ success: false, error: 'Failed to check incomplete entries' });
+    }
   }
 
   if (data.results && data.results.length > 0) {
