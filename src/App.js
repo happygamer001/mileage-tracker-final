@@ -2336,11 +2336,11 @@ function App() {
                           </div>
                           <div className="entry-row">
                             <span>Gallons:</span>
-                            <span>{entry.gallons.toFixed(2)}</span>
+                            <span>{(entry.gallons || 0).toFixed(2)}</span>
                           </div>
                           <div className="entry-row">
                             <span>Cost:</span>
-                            <span className="entry-highlight">${entry.cost.toFixed(2)}</span>
+                            <span className="entry-highlight">${(entry.cost || 0).toFixed(2)}</span>
                           </div>
                           {entry.location && (
                             <div className="entry-row">
