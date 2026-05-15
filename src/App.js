@@ -15,6 +15,7 @@ const TRUCKS = [
 const DRIVERS = [
   'Basil',
   'Calvin',
+  'Derik',
   'Drew',
   'Matt',
   'James',
@@ -153,6 +154,7 @@ function App() {
     'Jerron':  { halfDay: false, fullDay: false, absent: false },
     'Nic':     { halfDay: false, fullDay: false, absent: false },
     'Drew':    { halfDay: false, fullDay: false, absent: false },
+    'Derik':   { halfDay: false, fullDay: false, absent: false },
     'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
     'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
   });
@@ -905,16 +907,18 @@ function App() {
     setSelectedTruck(truck);
 
     const today = getCentralDateString();
-    const preTripKey = `pretrip_${truck}_${today}`;
+    // FIX: Include driver name in key so two different 'Other' drivers on the
+    // same truck the same day don't share the same pre-trip record.
+    // OLD: `pretrip_${truck}_${today}` — driver-agnostic, caused collisions
+    // NEW: `pretrip_${driverName}_${truck}_${today}` — unique per driver per truck per day
+    const driverName = currentDriver === 'Other' ? customDriverName : currentDriver;
+    const preTripKey = `pretrip_${driverName}_${truck}_${today}`;
     const alreadyDone = localStorage.getItem(preTripKey);
 
     if (alreadyDone) {
-      // Pre-trip already submitted today — skip straight to routing
       setShowPreTripChecklist(false);
-      // Delay slightly so selectedTruck state has settled before async call
       setTimeout(() => checkAndRouteAfterPretrip(truck), 100);
     } else {
-      // First time today for this truck — show pre-trip checklist
       setShowPreTripChecklist(true);
     }
   };
@@ -952,11 +956,12 @@ function App() {
       if (response.ok) {
         // Checklist complete, proceed to mode selection
         setShowPreTripChecklist(false);
-        // NEW: Save pre-trip completion to localStorage so it's skipped on subsequent logins today
-        // OLD: Pre-trip was never saved — it showed every single login
-        // NEW: Key is pretrip_${truck}_${date} so it resets automatically each new day
+        // FIX: Key now includes driver name so 'Other' drivers don't collide
+        // OLD: `pretrip_${selectedTruck}_${today}` — driver-agnostic
+        // NEW: `pretrip_${driverNameForKey}_${selectedTruck}_${today}` — unique per driver
         const today = getCentralDateString();
-        localStorage.setItem(`pretrip_${selectedTruck}_${today}`, 'true');
+        const driverNameForKey = currentDriver === 'Other' ? customDriverName : currentDriver;
+        localStorage.setItem(`pretrip_${driverNameForKey}_${selectedTruck}_${today}`, 'true');
         // NEW: Route directly based on whether an active shift exists
         await checkAndRouteAfterPretrip(selectedTruck);
         // Reset checklist for next time
@@ -1030,11 +1035,12 @@ function App() {
       if (response.ok) {
         // Checklist bypassed, proceed to mode selection
         setShowPreTripChecklist(false);
-        // NEW: Save pre-trip completion to localStorage so it's skipped on subsequent logins today
-        // OLD: Pre-trip was never saved — it showed every single login
-        // NEW: Key is pretrip_${truck}_${date} so it resets automatically each new day
+        // FIX: Key now includes driver name so 'Other' drivers don't collide
+        // OLD: `pretrip_${selectedTruck}_${today}` — driver-agnostic
+        // NEW: `pretrip_${driverNameForKey}_${selectedTruck}_${today}` — unique per driver
         const today = getCentralDateString();
-        localStorage.setItem(`pretrip_${selectedTruck}_${today}`, 'true');
+        const driverNameForKey = currentDriver === 'Other' ? customDriverName : currentDriver;
+        localStorage.setItem(`pretrip_${driverNameForKey}_${selectedTruck}_${today}`, 'true');
         // NEW: Route directly based on whether an active shift exists
         await checkAndRouteAfterPretrip(selectedTruck);
         // Reset checklist
@@ -1595,6 +1601,7 @@ function App() {
           'Jerron':  { halfDay: false, fullDay: false, absent: false },
           'Nic':     { halfDay: false, fullDay: false, absent: false },
           'Drew':    { halfDay: false, fullDay: false, absent: false },
+          'Derik':   { halfDay: false, fullDay: false, absent: false },
           'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
           'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
         });
@@ -3649,7 +3656,7 @@ function App() {
 
   // Daily Report form
   if (trackingMode === 'daily-report') {
-    const predefinedDrivers = ['James', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew'];
+    const predefinedDrivers = ['James', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew', 'Derik'];
     const customDrivers = ['Custom1', 'Custom2'];
     
     return (
