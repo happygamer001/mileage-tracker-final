@@ -1,7 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
-// Truck and Driver data
+// -------------------------------------------------------
+// UPDATE: Added two new vehicles to the fleet (2026-06-11).
+//
+// OLD value (7 entries):
+//   ['Green Semi', 'Dump Truck (2525)', '2500', '2502',
+//    '2503', '2504', '2507']
+//
+// NEW value (9 entries):
+//   Added 'Front Loading Mixer (2505)' between 2504 and
+//   2507 to keep mixer trucks in numeric order.
+//   Added 'Scraper (3004)' at the end as a new equipment
+//   class (separate from the mixer numeric sequence).
+//
+// WHY: New equipment added to McCook Concrete fleet.
+//   2505 is a front-loading mixer truck and 3004 is a
+//   scraper (earthmoving equipment). Both need to appear
+//   in the driver truck-selection grid so that mileage,
+//   fuel, and pre-trip checklist entries can be tied to
+//   these vehicles in the Notion databases.
+//
+// NOTE: Standardized spelling to "Scraper" (one P) as
+//   that's the correct spelling for this equipment class.
+//   Will appear in dropdowns and Notion reports as
+//   'Scraper (3004)'. Confirm with user if "Scrapper"
+//   is preferred and revise.
+// -------------------------------------------------------
 const TRUCKS = [
   'Green Semi',
   'Dump Truck (2525)',
@@ -9,7 +34,9 @@ const TRUCKS = [
   '2502',
   '2503',
   '2504',
-  '2507'
+  'Front Loading Mixer (2505)',  // NEW (2026-06-11)
+  '2507',
+  'Scraper (3004)'                // NEW (2026-06-11)
 ];
 
 const DRIVERS = [
