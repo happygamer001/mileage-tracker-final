@@ -544,6 +544,25 @@ body {
   }
 }
 
+/* -------------------------------------------------------
+   UPDATE: Notice text is now black for readability (2026-06-11).
+
+   OLD strong color: #e65100 (bright orange)
+   OLD p color:      #e65100 (bright orange)
+   NEW strong color: #000000 (black)
+   NEW p color:      #000000 (black)
+
+   WHY: Same reasoning as the two notice boxes above.
+     Orange strong-text on the light-orange background
+     was low-contrast even in light mode; in dark mode
+     the sub-text was being stripped to light gray by
+     the generic body.dark-mode p rule and became nearly
+     unreadable against the peach box (see driver
+     screenshot 2026-07-08). Black text keeps the
+     orange background as the attention cue while being
+     legible in both modes. Dark-mode override for this
+     notice is added at the bottom of this file.
+   ------------------------------------------------------- */
 /* GPS Permission Notice */
 .gps-permission-notice {
   background: #fff3e0;
@@ -554,14 +573,14 @@ body {
 }
 
 .gps-permission-notice strong {
-  color: #e65100;
+  color: #000000;  /* UPDATED (2026-06-11): was #e65100 */
   font-size: 18px;
   display: block;
   margin-bottom: 10px;
 }
 
 .gps-permission-notice p {
-  color: #e65100;
+  color: #000000;  /* UPDATED (2026-06-11): was #e65100 */
   margin: 5px 0;
   font-size: 14px;
 }
@@ -1480,5 +1499,10 @@ body.dark-mode .incomplete-entry-notice p {
 
 body.dark-mode .gps-detection-notice strong,
 body.dark-mode .gps-detection-notice p {
+  color: #000000;
+}
+
+body.dark-mode .gps-permission-notice strong,
+body.dark-mode .gps-permission-notice p {
   color: #000000;
 }
