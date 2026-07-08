@@ -39,8 +39,34 @@ const TRUCKS = [
   'Scraper (3004)'                // NEW (2026-06-11)
 ];
 
+// -------------------------------------------------------
+// UPDATE: Added new driver to the roster (2026-06-11).
+//
+// OLD value (10 entries):
+//   ['Basil', 'Calvin', 'Derik', 'Drew', 'Matt', 'James',
+//    'Nic', 'Jerron', 'Test', 'Other']
+//
+// NEW value (11 entries):
+//   Added 'Brent' between 'Basil' and 'Calvin' to keep
+//   the driver list in alphabetical order.
+//
+// WHY: Brent joined the McCook Concrete team and needs
+//   to appear as a selectable name on the login screen
+//   so his mileage, fuel, and pre-trip entries are tied
+//   to his name in the Notion databases. Kept the
+//   'Test' and 'Other' entries at the end since those
+//   are functional entries (test account + custom-name
+//   fallback), not alphabetized driver names.
+//
+// NOTE: Brent is NOT added to the daily-report driver
+//   status block (predefinedDrivers) below because that
+//   list is for tracking hours on the batch manager's
+//   report. If Brent should appear there too, that's a
+//   separate change — say the word.
+// -------------------------------------------------------
 const DRIVERS = [
   'Basil',
+  'Brent',       // NEW (2026-06-11)
   'Calvin',
   'Derik',
   'Drew',
