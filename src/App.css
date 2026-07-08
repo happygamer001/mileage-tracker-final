@@ -432,6 +432,23 @@ body {
   gap: 20px;
 }
 
+/* -------------------------------------------------------
+   UPDATE: Notice text is now black for readability (2026-06-11).
+
+   OLD strong color: #856404 (dark yellow/brown)
+   OLD p color:      #856404 (dark yellow/brown)
+   NEW strong color: #000000 (black)
+   NEW p color:      #000000 (black)
+
+   WHY: On the peach/cream background, dark yellow text
+     was hard to read (and in dark mode was being
+     overridden by the generic body.dark-mode p rule to
+     light gray, which read as "white" on the peach box).
+     Black is clearly legible while the peach background
+     is preserved as the visual attention cue. Dark-mode
+     overrides for this notice are added at the bottom of
+     this file so the text stays black in both modes.
+   ------------------------------------------------------- */
 /* Incomplete Entry Notice */
 .incomplete-entry-notice {
   background: #fff3cd;
@@ -442,14 +459,14 @@ body {
 }
 
 .incomplete-entry-notice strong {
-  color: #856404;
+  color: #000000;  /* UPDATED (2026-06-11): was #856404 */
   font-size: 18px;
   display: block;
   margin-bottom: 10px;
 }
 
 .incomplete-entry-notice p {
-  color: #856404;
+  color: #000000;  /* UPDATED (2026-06-11): was #856404 */
   margin: 5px 0;
 }
 
@@ -480,6 +497,21 @@ body {
   margin-top: 0;
 }
 
+/* -------------------------------------------------------
+   UPDATE: Notice text is now black for readability (2026-06-11).
+
+   OLD strong color: #2e7d32 (dark green)
+   OLD p color:      #2e7d32 (dark green)
+   NEW strong color: #000000 (black)
+   NEW p color:      #000000 (black)
+
+   WHY: Same reasoning as the .incomplete-entry-notice
+     block above — dark green text was hard to read on
+     the light green background, and dark mode was
+     stripping the color entirely via body.dark-mode p.
+     Black text keeps the green background as the
+     attention cue while being legible in both modes.
+   ------------------------------------------------------- */
 /* GPS Detection Notice */
 .gps-detection-notice {
   background: #e8f5e9;
@@ -491,14 +523,14 @@ body {
 }
 
 .gps-detection-notice strong {
-  color: #2e7d32;
+  color: #000000;  /* UPDATED (2026-06-11): was #2e7d32 */
   font-size: 18px;
   display: block;
   margin-bottom: 10px;
 }
 
 .gps-detection-notice p {
-  color: #2e7d32;
+  color: #000000;  /* UPDATED (2026-06-11): was #2e7d32 */
   margin: 5px 0;
   font-size: 15px;
 }
@@ -1421,3 +1453,32 @@ body.dark-mode .warning-text { color: #fbd38d !important; }
 
 .no-data-message { text-align: center; padding: 40px; color: #718096; font-size: 16px; }
 body.dark-mode .no-data-message { color: #a0aec0; }
+
+/* -------------------------------------------------------
+   NEW: Dark-mode overrides for shift-memory notice boxes
+        (2026-06-11).
+
+   WHY: The generic `body.dark-mode p` rule earlier in
+     this file paints all <p> tags #cbd5e0 (light gray)
+     in dark mode. Without these more-specific overrides,
+     it would strip the black color we just set on the
+     .incomplete-entry-notice and .gps-detection-notice
+     text. The peach and green backgrounds on these two
+     notices do NOT switch to dark backgrounds in dark
+     mode (there are no dark-mode background overrides
+     for them), so we keep the text black in both modes
+     for consistency and readability.
+
+   Specificity note: 0,2,1 (two classes + one element)
+     beats body.dark-mode p at 0,1,1, so no !important
+     needed.
+   ------------------------------------------------------- */
+body.dark-mode .incomplete-entry-notice strong,
+body.dark-mode .incomplete-entry-notice p {
+  color: #000000;
+}
+
+body.dark-mode .gps-detection-notice strong,
+body.dark-mode .gps-detection-notice p {
+  color: #000000;
+}
