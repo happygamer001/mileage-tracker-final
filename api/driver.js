@@ -248,7 +248,7 @@ async function handleSubmitFuel(req, res, apiKey, databaseId) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { driverName, truckNumber, gallons, date, location } = req.body;
+  const { driverName, truckNumber, gallons, date, location, odometer } = req.body;
 
   if (!driverName || !truckNumber || !gallons || !date) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -263,6 +263,14 @@ async function handleSubmitFuel(req, res, apiKey, databaseId) {
 
   if (location) {
     properties['Location'] = { rich_text: [{ text: { content: location } }] };
+  }
+
+  // NEW: Write odometer reading to Notion fuel database
+  // OLD: Odometer was not recorded with fuel entries
+  // NEW: Pre-populated from active shift start mileage so drivers don't have to recall it
+  // NOTE: Ensure your Notion fuel database has a Number column named exactly 'Odometer Reading'
+  if (odometer !== null && odometer !== undefined && !isNaN(odometer)) {
+    properties['Odometer Reading'] = { number: parseFloat(odometer) };
   }
 
   const response = await fetch('https://api.notion.com/v1/pages', {
