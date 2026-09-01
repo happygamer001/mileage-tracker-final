@@ -1,32 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
-// -------------------------------------------------------
-// UPDATE: Added two new vehicles to the fleet (2026-06-11).
-//
-// OLD value (7 entries):
-//   ['Green Semi', 'Dump Truck (2525)', '2500', '2502',
-//    '2503', '2504', '2507']
-//
-// NEW value (9 entries):
-//   Added 'Front Loading Mixer (2505)' between 2504 and
-//   2507 to keep mixer trucks in numeric order.
-//   Added 'Scraper (3004)' at the end as a new equipment
-//   class (separate from the mixer numeric sequence).
-//
-// WHY: New equipment added to McCook Concrete fleet.
-//   2505 is a front-loading mixer truck and 3004 is a
-//   scraper (earthmoving equipment). Both need to appear
-//   in the driver truck-selection grid so that mileage,
-//   fuel, and pre-trip checklist entries can be tied to
-//   these vehicles in the Notion databases.
-//
-// NOTE: Standardized spelling to "Scraper" (one P) as
-//   that's the correct spelling for this equipment class.
-//   Will appear in dropdowns and Notion reports as
-//   'Scraper (3004)'. Confirm with user if "Scrapper"
-//   is preferred and revise.
-// -------------------------------------------------------
+// Truck and Driver data
 const TRUCKS = [
   'Green Semi',
   'Dump Truck (2525)',
@@ -34,39 +9,11 @@ const TRUCKS = [
   '2502',
   '2503',
   '2504',
-  'Front Loading Mixer (2505)',  // NEW (2026-06-11)
-  '2507',
-  'Scraper (3004)'                // NEW (2026-06-11)
+  '2507'
 ];
 
-// -------------------------------------------------------
-// UPDATE: Added new driver to the roster (2026-06-11).
-//
-// OLD value (10 entries):
-//   ['Basil', 'Calvin', 'Derik', 'Drew', 'Matt', 'James',
-//    'Nic', 'Jerron', 'Test', 'Other']
-//
-// NEW value (11 entries):
-//   Added 'Brent' between 'Basil' and 'Calvin' to keep
-//   the driver list in alphabetical order.
-//
-// WHY: Brent joined the McCook Concrete team and needs
-//   to appear as a selectable name on the login screen
-//   so his mileage, fuel, and pre-trip entries are tied
-//   to his name in the Notion databases. Kept the
-//   'Test' and 'Other' entries at the end since those
-//   are functional entries (test account + custom-name
-//   fallback), not alphabetized driver names.
-//
-// NOTE: Brent is NOT added to the daily-report driver
-//   status block (predefinedDrivers) below because that
-//   list is for tracking hours on the batch manager's
-//   report. If Brent should appear there too, that's a
-//   separate change — say the word.
-// -------------------------------------------------------
 const DRIVERS = [
   'Basil',
-  'Brent',       // NEW (2026-06-11)
   'Calvin',
   'Derik',
   'Drew',
@@ -177,6 +124,10 @@ function App() {
     gallons: '',
     cost: '',
     location: '',
+    // NEW: Odometer reading at time of fueling
+    // OLD: Did not exist — drivers had to recall starting mileage manually
+    // NEW: Pre-populated from active shift start or last completed shift end
+    odometer: '',
     fuelPhoto: null
   }));
   
@@ -484,6 +435,22 @@ function App() {
     };
   }, []);
   
+  // NEW: Pre-populate fuel odometer field when driver enters fuel tracking mode
+  // OLD: Did not exist — odometer field was always blank
+  // NEW: Uses incompleteEntry.mileageStart if an active shift exists (most accurate),
+  //      otherwise falls back to lastTruckMileage from the last completed shift
+  useEffect(() => {
+    if (trackingMode === 'fuel') {
+      const odometerValue = incompleteEntry?.mileageStart || lastTruckMileage || '';
+      if (odometerValue) {
+        setFuelData(prev => ({
+          ...prev,
+          odometer: odometerValue.toString()
+        }));
+      }
+    }
+  }, [trackingMode, incompleteEntry, lastTruckMileage]);
+
   // Fetch week data when entering week-at-a-glance mode
   useEffect(() => {
     if (trackingMode === 'week-at-a-glance') {
@@ -1164,7 +1131,8 @@ function App() {
         state: 'Nebraska',
         gallons: '',
         cost: '',
-        location: ''
+        location: '',
+        odometer: ''
       });
     } else if (selectedTruck) {
       setSelectedTruck('');
@@ -1493,6 +1461,10 @@ function App() {
       truckNumber: selectedTruck,
       date: fuelData.date,
       gallons: parseFloat(fuelData.gallons),
+      // NEW: Send odometer reading with fuel entry
+      // OLD: Odometer was not included in fuel payload
+      // NEW: Allows Notion to record mileage at time of fueling
+      odometer: fuelData.odometer ? parseFloat(fuelData.odometer) : null,
       location: isSemi ? (fuelData.location || 'N/A') : null
     };
 
@@ -1513,6 +1485,7 @@ function App() {
           gallons: '',
           cost: '',
           location: '',
+          odometer: '',
           fuelPhoto: null
         });
         
@@ -3644,6 +3617,30 @@ function App() {
                   <option key={state} value={state}>{state}</option>
                 ))}
               </select>
+            </div>
+
+            {/* NEW: Odometer reading at time of fueling */}
+            {/* OLD: Did not exist — drivers had no way to log mileage with fuel entry */}
+            {/* NEW: Pre-filled from active shift start mileage or last completed shift */}
+            <div className="form-group">
+              <label htmlFor="fuel-odometer">Odometer Reading:</label>
+              <input
+                id="fuel-odometer"
+                type="number"
+                inputMode="decimal"
+                step="0.1"
+                value={fuelData.odometer}
+                onChange={(e) => setFuelData({...fuelData, odometer: e.target.value})}
+                placeholder="Enter current odometer reading"
+                required
+                className="text-input"
+              />
+              {(incompleteEntry?.mileageStart || lastTruckMileage) && 
+               fuelData.odometer === (incompleteEntry?.mileageStart || lastTruckMileage).toString() && (
+                <small style={{ color: '#38a169', fontWeight: '600', marginTop: '4px', display: 'block' }}>
+                  ✅ Pre-filled from your current shift — verify and adjust if needed
+                </small>
+              )}
             </div>
 
             <div className="form-group">
