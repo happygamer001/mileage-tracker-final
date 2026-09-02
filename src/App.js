@@ -4202,8 +4202,6 @@ function App() {
                 </button>
               </div>
               
-              </div>
-              
               {predefinedDrivers.map(driver => (
                 <div key={driver} className="driver-row">
                   <span className="driver-name">{driver}</span>
