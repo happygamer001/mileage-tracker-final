@@ -14,11 +14,11 @@ const TRUCKS = [
 
 const DRIVERS = [
   'Basil',
+  'Brent',
   'Calvin',
   'Derik',
   'Drew',
   'Matt',
-  'James',
   'Nic',
   'Jerron',
   'Test',
@@ -153,7 +153,7 @@ function App() {
   // Driver work status - initialized with known drivers + 2 blanks
   // FIX: All three statuses (halfDay, fullDay, absent) are included and mutually exclusive
   const [driverStatus, setDriverStatus] = useState({
-    'James':   { halfDay: false, fullDay: false, absent: false },
+    'Brent':   { halfDay: false, fullDay: false, absent: false },
     'Matt':    { halfDay: false, fullDay: false, absent: false },
     'Calvin':  { halfDay: false, fullDay: false, absent: false },
     'Jerron':  { halfDay: false, fullDay: false, absent: false },
@@ -164,6 +164,32 @@ function App() {
     'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
     'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
   });
+
+  // Dynamic driver list fetched from Notion Driver Management database.
+  // OLD: Drivers were hardcoded in DRIVERS array and driverStatus initial state.
+  // NEW: Fetched from Notion on load so batch manager can add/remove without code changes.
+  const [driverList, setDriverList] = useState([]);
+  const [loadingDriverList, setLoadingDriverList] = useState(false);
+
+  // Manage drivers screen state
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newDriverRole, setNewDriverRole] = useState('Driver');
+  const [driverMgmtStatus, setDriverMgmtStatus] = useState(null); // feedback messages
+
+  // Helper: builds driverStatus shape from the fetched driver list
+  const buildDriverStatus = (drivers) => {
+    const status = {};
+    drivers
+      .filter(d => d.inBatchReport)
+      .sort((a, b) => a.order - b.order)
+      .forEach(d => {
+        status[d.name] = { halfDay: false, fullDay: false, absent: false };
+      });
+    // Always keep custom slots at the end
+    status['Custom1'] = { name: '', halfDay: false, fullDay: false, absent: false };
+    status['Custom2'] = { name: '', halfDay: false, fullDay: false, absent: false };
+    return status;
+  };
   
   // Feedback state
   const [submitStatus, setSubmitStatus] = useState(null);
@@ -420,6 +446,36 @@ function App() {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('darkMode', darkMode);
   }, [darkMode]);
+
+  // Fetch driver list from Notion Driver Management database on app load.
+  // OLD: Driver list was hardcoded — required a code deploy to add/remove drivers.
+  // NEW: Fetched on mount so batch manager changes in Notion take effect immediately.
+  useEffect(() => {
+    const fetchDriverList = async () => {
+      setLoadingDriverList(true);
+      try {
+        const response = await fetch('https://mileage-tracker-final.vercel.app/api/manage-drivers');
+        const data = await response.json();
+        if (data.success && data.drivers.length > 0) {
+          setDriverList(data.drivers);
+        }
+      } catch (error) {
+        console.error('Error fetching driver list — using hardcoded fallback:', error);
+      } finally {
+        setLoadingDriverList(false);
+      }
+    };
+    fetchDriverList();
+  }, []);
+
+  // Rebuild driverStatus for batch report whenever driver list updates.
+  // OLD: driverStatus was static and only reset with hardcoded names.
+  // NEW: Rebuilt from the Notion driver list so new drivers appear automatically.
+  useEffect(() => {
+    if (driverList.length > 0) {
+      setDriverStatus(buildDriverStatus(driverList));
+    }
+  }, [driverList]);
   
   // Online/offline detection
   useEffect(() => {
@@ -1634,8 +1690,11 @@ function App() {
         // FIX 3: Reset includes absent: false for all drivers.
         // Previously the reset was missing absent entirely.
         // -------------------------------------------------------
-        setDriverStatus({
-          'James':   { halfDay: false, fullDay: false, absent: false },
+        // FIX: Reset now uses dynamic driver list so new drivers appear automatically
+        // OLD: Reset was hardcoded with specific driver names
+        // NEW: Rebuilt from Notion driver list via buildDriverStatus helper
+        setDriverStatus(driverList.length > 0 ? buildDriverStatus(driverList) : {
+          'Brent':   { halfDay: false, fullDay: false, absent: false },
           'Matt':    { halfDay: false, fullDay: false, absent: false },
           'Calvin':  { halfDay: false, fullDay: false, absent: false },
           'Jerron':  { halfDay: false, fullDay: false, absent: false },
@@ -1701,9 +1760,14 @@ function App() {
                 </optgroup>
                 
                 <optgroup label="Drivers">
-                  {DRIVERS.map(driver => (
+                  {/* NEW: Uses dynamic driver list from Notion if loaded, falls back to DRIVERS constant */}
+                  {(driverList.length > 0
+                    ? driverList.filter(d => d.active && d.role === 'Driver').sort((a, b) => a.order - b.order).map(d => d.name)
+                    : DRIVERS.filter(d => d !== 'Other')
+                  ).map(driver => (
                     <option key={driver} value={driver}>{driver}</option>
                   ))}
+                  <option value="Other">Other</option>
                 </optgroup>
               </select>
 
@@ -1809,6 +1873,20 @@ function App() {
               <div className="option-icon">📈</div>
               <div className="option-title">Capacity Planning</div>
               <div className="option-description">MCI at a Glance</div>
+            </button>
+
+            <button
+              onClick={() => {
+                setAnimationClass('slide-in-right');
+                setDriverMgmtStatus(null);
+                setNewDriverName('');
+                setTrackingMode('manage-drivers');
+              }}
+              className="supervisor-option-card"
+            >
+              <div className="option-icon">👥</div>
+              <div className="option-title">Manage Drivers</div>
+              <div className="option-description">Add or remove drivers from the app</div>
             </button>
           </div>
           
@@ -2796,6 +2874,295 @@ function App() {
     );
   }
 
+  // Manage Drivers Screen (Supervisor only)
+  // Allows batch manager to add, remove, and toggle drivers
+  // for both the mileage login and the daily batch report.
+  if (trackingMode === 'manage-drivers') {
+    const handleToggleDriver = async (driver, field) => {
+      const newValue = !driver[field];
+      // Optimistic update
+      setDriverList(prev => prev.map(d =>
+        d.id === driver.id ? { ...d, [field]: newValue } : d
+      ));
+      try {
+        const response = await fetch('https://mileage-tracker-final.vercel.app/api/manage-drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update-driver',
+            driverId: driver.id,
+            [field === 'active' ? 'active' : 'inBatchReport']: newValue
+          })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        setDriverMgmtStatus({ type: 'success', message: `✅ ${driver.name} updated` });
+      } catch (error) {
+        // Revert on failure
+        setDriverList(prev => prev.map(d =>
+          d.id === driver.id ? { ...d, [field]: !newValue } : d
+        ));
+        setDriverMgmtStatus({ type: 'error', message: `❌ Failed to update ${driver.name}` });
+      }
+    };
+
+    const handleAddDriver = async () => {
+      if (!newDriverName.trim()) {
+        setDriverMgmtStatus({ type: 'error', message: '❌ Please enter a driver name' });
+        return;
+      }
+      const trimmedName = newDriverName.trim();
+      if (driverList.some(d => d.name.toLowerCase() === trimmedName.toLowerCase())) {
+        setDriverMgmtStatus({ type: 'error', message: `❌ ${trimmedName} already exists` });
+        return;
+      }
+      try {
+        const response = await fetch('https://mileage-tracker-final.vercel.app/api/manage-drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'add-driver',
+            name: trimmedName,
+            active: true,
+            inBatchReport: newDriverRole === 'Driver',
+            role: newDriverRole,
+            order: driverList.length + 1
+          })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        setDriverList(prev => [...prev, data.driver]);
+        setNewDriverName('');
+        setNewDriverRole('Driver');
+        setDriverMgmtStatus({ type: 'success', message: `✅ ${trimmedName} added successfully` });
+      } catch (error) {
+        setDriverMgmtStatus({ type: 'error', message: `❌ Failed to add driver: ${error.message}` });
+      }
+    };
+
+    const handleRemoveDriver = async (driver) => {
+      if (!window.confirm(`Remove ${driver.name} from the app? This can be undone in Notion.`)) return;
+      // Optimistic update
+      setDriverList(prev => prev.filter(d => d.id !== driver.id));
+      try {
+        const response = await fetch('https://mileage-tracker-final.vercel.app/api/manage-drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove-driver', driverId: driver.id })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        setDriverMgmtStatus({ type: 'success', message: `✅ ${driver.name} removed` });
+      } catch (error) {
+        // Revert on failure
+        setDriverList(prev => [...prev, driver].sort((a, b) => a.order - b.order));
+        setDriverMgmtStatus({ type: 'error', message: `❌ Failed to remove ${driver.name}` });
+      }
+    };
+
+    return (
+      <div className="App">
+        {isLoading && (
+          <div className="loading-overlay">
+            <div className="loading-spinner"></div>
+            <div className="loading-text">Saving...</div>
+          </div>
+        )}
+        <div className={`container ${animationClass}`}>
+          <div className="header">
+            <button onClick={() => {
+              setAnimationClass('slide-in-left');
+              setTrackingMode('supervisor-menu');
+            }} className="btn btn-back">
+              ← Back
+            </button>
+            <button onClick={handleLogout} className="btn btn-secondary">Logout</button>
+          </div>
+
+          <h2 style={{ marginBottom: '8px' }}>👥 Manage Drivers</h2>
+          <p style={{ color: '#718096', marginBottom: '24px', fontSize: '14px' }}>
+            Changes take effect immediately across all devices.
+          </p>
+
+          {driverMgmtStatus && (
+            <div className={`status-message ${driverMgmtStatus.type}`} style={{ marginBottom: '20px' }}>
+              {driverMgmtStatus.message}
+            </div>
+          )}
+
+          {/* Column headers */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 90px 90px 44px',
+            gap: '8px',
+            padding: '0 12px 8px',
+            fontWeight: '700',
+            fontSize: '12px',
+            color: '#718096',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px'
+          }}>
+            <span>Driver</span>
+            <span style={{ textAlign: 'center' }}>Login</span>
+            <span style={{ textAlign: 'center' }}>Report</span>
+            <span></span>
+          </div>
+
+          {/* Driver rows */}
+          {driverList.map(driver => (
+            <div key={driver.id} style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 90px 90px 44px',
+              gap: '8px',
+              alignItems: 'center',
+              padding: '12px',
+              marginBottom: '8px',
+              background: darkMode ? '#374151' : '#f7fafc',
+              border: `2px solid ${darkMode ? '#4a5568' : '#e2e8f0'}`,
+              borderRadius: '10px'
+            }}>
+              {/* Name + Role badge */}
+              <div>
+                <span style={{ fontWeight: '600', color: darkMode ? '#e2e8f0' : '#2d3748' }}>
+                  {driver.name}
+                </span>
+                <span style={{
+                  marginLeft: '8px',
+                  fontSize: '11px',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  background: driver.role === 'Batch Manager' ? '#FFF4D6' : driver.role === 'Test' ? '#e2e8f0' : '#e6f7ff',
+                  color: driver.role === 'Batch Manager' ? '#FF7E26' : driver.role === 'Test' ? '#718096' : '#1890ff',
+                  fontWeight: '600'
+                }}>
+                  {driver.role}
+                </span>
+              </div>
+
+              {/* Active toggle (Login dropdown) */}
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={() => handleToggleDriver(driver, 'active')}
+                  style={{
+                    width: '52px', height: '28px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: driver.active ? '#48bb78' : '#cbd5e0',
+                    transition: 'background 0.2s',
+                    position: 'relative'
+                  }}
+                  title={driver.active ? 'Active — click to deactivate' : 'Inactive — click to activate'}
+                >
+                  <span style={{
+                    position: 'absolute',
+                    top: '4px',
+                    left: driver.active ? '28px' : '4px',
+                    width: '20px', height: '20px',
+                    background: 'white',
+                    borderRadius: '50%',
+                    transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                  }} />
+                </button>
+              </div>
+
+              {/* In Batch Report toggle */}
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={() => handleToggleDriver(driver, 'inBatchReport')}
+                  style={{
+                    width: '52px', height: '28px',
+                    borderRadius: '14px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: driver.inBatchReport ? '#FF7E26' : '#cbd5e0',
+                    transition: 'background 0.2s',
+                    position: 'relative'
+                  }}
+                  title={driver.inBatchReport ? 'In report — click to remove' : 'Not in report — click to add'}
+                >
+                  <span style={{
+                    position: 'absolute',
+                    top: '4px',
+                    left: driver.inBatchReport ? '28px' : '4px',
+                    width: '20px', height: '20px',
+                    background: 'white',
+                    borderRadius: '50%',
+                    transition: 'left 0.2s',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                  }} />
+                </button>
+              </div>
+
+              {/* Remove button */}
+              <button
+                onClick={() => handleRemoveDriver(driver)}
+                style={{
+                  width: '36px', height: '36px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#fed7d7',
+                  color: '#c53030',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="Remove driver"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {/* Legend */}
+          <div style={{ fontSize: '12px', color: '#718096', padding: '4px 12px 20px', display: 'flex', gap: '16px' }}>
+            <span>🟢 <strong>Login</strong> = shows in driver login dropdown</span>
+            <span>🟠 <strong>Report</strong> = shows in daily batch report</span>
+          </div>
+
+          {/* Add New Driver */}
+          <div style={{
+            background: darkMode ? '#2d3748' : '#ffffff',
+            border: `2px solid #FF7E26`,
+            borderRadius: '12px',
+            padding: '20px',
+            marginTop: '8px'
+          }}>
+            <h3 style={{ color: '#FF7E26', marginBottom: '16px', fontSize: '18px' }}>+ Add New Driver</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input
+                type="text"
+                value={newDriverName}
+                onChange={(e) => setNewDriverName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddDriver()}
+                placeholder="Enter driver name..."
+                className="text-input"
+              />
+              <select
+                value={newDriverRole}
+                onChange={(e) => setNewDriverRole(e.target.value)}
+                className="select-input"
+              >
+                <option value="Driver">Driver</option>
+                <option value="Batch Manager">Batch Manager</option>
+                <option value="Test">Test</option>
+              </select>
+              <button
+                onClick={handleAddDriver}
+                className="btn btn-primary"
+              >
+                Add Driver
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Render truck selection screen (skip for batch managers)
   if (!selectedTruck && !isBatchManager) {
     const displayName = currentDriver === 'Other' ? customDriverName : currentDriver;
@@ -3727,7 +4094,12 @@ function App() {
 
   // Daily Report form
   if (trackingMode === 'daily-report') {
-    const predefinedDrivers = ['James', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew', 'Derik', 'Test'];
+    // NEW: Use dynamic driver list from Notion if loaded, fall back to hardcoded list
+    // OLD: predefinedDrivers was always the hardcoded array
+    // NEW: Now reflects whatever the batch manager has set in Manage Drivers
+    const predefinedDrivers = driverList.length > 0
+      ? driverList.filter(d => d.inBatchReport).sort((a, b) => a.order - b.order).map(d => d.name)
+      : ['Brent', 'Matt', 'Calvin', 'Jerron', 'Nic', 'Drew', 'Derik', 'Test'];
     const customDrivers = ['Custom1', 'Custom2'];
     
     return (
