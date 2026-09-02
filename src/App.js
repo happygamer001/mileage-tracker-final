@@ -174,6 +174,8 @@ function App() {
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverRole, setNewDriverRole] = useState('Driver');
   const [driverMgmtStatus, setDriverMgmtStatus] = useState(null); // feedback messages
+  // NEW: Tracks which screen launched manage-drivers so Back goes to the right place
+  const [previousTrackingMode, setPreviousTrackingMode] = useState('supervisor-menu');
 
   // Helper: builds driverStatus shape from the fetched driver list
   const buildDriverStatus = (drivers) => {
@@ -1876,6 +1878,7 @@ function App() {
                 setAnimationClass('slide-in-right');
                 setDriverMgmtStatus(null);
                 setNewDriverName('');
+                setPreviousTrackingMode('supervisor-menu');
                 setTrackingMode('manage-drivers');
               }}
               className="supervisor-option-card"
@@ -2968,7 +2971,7 @@ function App() {
           <div className="header">
             <button onClick={() => {
               setAnimationClass('slide-in-left');
-              setTrackingMode('supervisor-menu');
+              setTrackingMode(previousTrackingMode || 'supervisor-menu');
             }} className="btn btn-back">
               ← Back
             </button>
@@ -4170,7 +4173,36 @@ function App() {
             </div>
 
             <div className="drivers-section">
-              <h3>Drivers:</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0 }}>Drivers:</h3>
+                {/* NEW: Quick link to Manage Drivers screen from within the batch report */}
+                {/* OLD: No way to edit the driver roster from the batch report */}
+                {/* NEW: Batch manager can add/remove drivers without leaving the supervisor flow */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnimationClass('slide-in-right');
+                    setDriverMgmtStatus(null);
+                    setNewDriverName('');
+                    setPreviousTrackingMode('daily-report');
+                    setTrackingMode('manage-drivers');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: '2px solid #FF7E26',
+                    color: '#FF7E26',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ✏️ Edit Roster
+                </button>
+              </div>
+              
+              </div>
               
               {predefinedDrivers.map(driver => (
                 <div key={driver} className="driver-row">
