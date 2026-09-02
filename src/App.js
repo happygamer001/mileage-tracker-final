@@ -169,7 +169,6 @@ function App() {
   // OLD: Drivers were hardcoded in DRIVERS array and driverStatus initial state.
   // NEW: Fetched from Notion on load so batch manager can add/remove without code changes.
   const [driverList, setDriverList] = useState([]);
-  const [loadingDriverList, setLoadingDriverList] = useState(false);
 
   // Manage drivers screen state
   const [newDriverName, setNewDriverName] = useState('');
@@ -452,7 +451,6 @@ function App() {
   // NEW: Fetched on mount so batch manager changes in Notion take effect immediately.
   useEffect(() => {
     const fetchDriverList = async () => {
-      setLoadingDriverList(true);
       try {
         const response = await fetch('https://mileage-tracker-final.vercel.app/api/manage-drivers');
         const data = await response.json();
@@ -461,8 +459,6 @@ function App() {
         }
       } catch (error) {
         console.error('Error fetching driver list — using hardcoded fallback:', error);
-      } finally {
-        setLoadingDriverList(false);
       }
     };
     fetchDriverList();
