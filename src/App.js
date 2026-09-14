@@ -131,6 +131,12 @@ function App() {
     fuelPhoto: null
   }));
   
+  // NEW: Tracks whether the current fuel stop is end-of-day or mid-shift.
+  // null = question not yet answered, true = end of day, false = mid-shift
+  // OLD: Did not exist — fuel always asked for odometer regardless of shift status
+  // NEW: Controls which fields appear and where the app routes after submit
+  const [fuelEndOfDay, setFuelEndOfDay] = useState(null);
+
   // Daily Report form state
   const [dailyReportData, setDailyReportData] = useState(() => ({
     name: '',
@@ -490,11 +496,11 @@ function App() {
   }, []);
   
   // NEW: Pre-populate fuel odometer field when driver enters fuel tracking mode
-  // OLD: Did not exist — odometer field was always blank
-  // NEW: Uses incompleteEntry.mileageStart if an active shift exists (most accurate),
-  //      otherwise falls back to lastTruckMileage from the last completed shift
+  // Also resets fuelEndOfDay so the question is asked fresh each time
   useEffect(() => {
     if (trackingMode === 'fuel') {
+      // Reset end-of-day question on each entry to fuel mode
+      setFuelEndOfDay(null);
       const odometerValue = incompleteEntry?.mileageStart || lastTruckMileage || '';
       if (odometerValue) {
         setFuelData(prev => ({
@@ -1163,6 +1169,7 @@ function App() {
   // Handle back button
   const handleBack = () => {
     setAnimationClass('slide-in-left');
+    setFuelEndOfDay(null); // Reset end-of-day question when leaving fuel mode
     if (trackingMode) {
       // If batch manager, logout instead of going back to truck selection
       if (isBatchManager) {
@@ -1515,19 +1522,15 @@ function App() {
       truckNumber: selectedTruck,
       date: fuelData.date,
       gallons: parseFloat(fuelData.gallons),
-      // NEW: Send odometer reading with fuel entry
-      // OLD: Odometer was not included in fuel payload
-      // NEW: Allows Notion to record mileage at time of fueling
-      odometer: fuelData.odometer ? parseFloat(fuelData.odometer) : null,
+      // Only include odometer on end-of-day fuel stops
+      odometer: fuelEndOfDay && fuelData.odometer ? parseFloat(fuelData.odometer) : null,
       location: isSemi ? (fuelData.location || 'N/A') : null
     };
 
     try {
       const response = await fetch('https://mileage-tracker-final.vercel.app/api/driver', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
@@ -1542,10 +1545,28 @@ function App() {
           odometer: '',
           fuelPhoto: null
         });
-        
-        // Seamlessly redirect to mileage form with animation
-        setAnimationClass('slide-in-right');
-        setTrackingMode('mileage');
+
+        if (fuelEndOfDay && incompleteEntry) {
+          // END OF DAY: pre-fill ending mileage from odometer and route to Complete Shift
+          // OLD: Always redirected to mileage form without pre-filling ending mileage
+          // NEW: Carries the odometer reading forward so driver just confirms and submits
+          if (fuelData.odometer) {
+            setMileageData(prev => ({
+              ...prev,
+              mileageEnd: fuelData.odometer.toString()
+            }));
+          }
+          setFuelEndOfDay(null);
+          setAnimationClass('slide-in-right');
+          setTrackingMode('mileage');
+        } else {
+          // MID-SHIFT or no active shift: return to mode selection
+          // OLD: Always redirected to mileage form
+          // NEW: Returns to mode selection so driver can continue their shift
+          setFuelEndOfDay(null);
+          setAnimationClass('slide-in-left');
+          setTrackingMode(null);
+        }
       } else {
         throw new Error('Failed to submit data');
       }
@@ -3940,6 +3961,189 @@ function App() {
       ? (parseFloat(fuelData.cost) / parseFloat(fuelData.gallons)).toFixed(2)
       : 0;
 
+    // -------------------------------------------------------
+    // STEP 1: End-of-day question screen
+    // Only shown when driver has an active shift.
+    // If no active shift, skip straight to simplified form.
+    // OLD: No question asked — always showed full form with odometer
+    // NEW: Asks once, then shows the right form for the situation
+    // -------------------------------------------------------
+    if (fuelEndOfDay === null && incompleteEntry) {
+      return (
+        <div className="App">
+          <div className={`container ${animationClass}`}>
+            <div className="header">
+              <button onClick={handleBack} className="btn btn-back">← Back</button>
+              <h1>Track Fuel</h1>
+              <p className="user-info">Driver: {displayName} | Truck: {selectedTruck}</p>
+            </div>
+
+            <div style={{ textAlign: 'center', padding: '30px 10px' }}>
+              <div style={{ fontSize: '72px', marginBottom: '20px' }}>⛽</div>
+              <h2 style={{ color: darkMode ? '#e2e8f0' : '#2d3748', marginBottom: '12px' }}>
+                Last fuel stop of the day?
+              </h2>
+              <p style={{ color: '#718096', fontSize: '16px', marginBottom: '40px', lineHeight: '1.5' }}>
+                This helps us know whether to close out your shift after fueling.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '400px', margin: '0 auto' }}>
+                <button
+                  onClick={() => setFuelEndOfDay(true)}
+                  className="btn btn-primary"
+                  style={{ padding: '20px', fontSize: '18px' }}
+                >
+                  ✅ Yes — ending my day
+                </button>
+                <button
+                  onClick={() => setFuelEndOfDay(false)}
+                  className="btn btn-secondary"
+                  style={{ padding: '20px', fontSize: '18px' }}
+                >
+                  🚛 No — still driving
+                </button>
+              </div>
+
+              <p style={{ color: '#a0aec0', fontSize: '13px', marginTop: '30px' }}>
+                Active shift started: {incompleteEntry.date} | Start mileage: {incompleteEntry.mileageStart}
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------
+    // STEP 2A: Mid-shift fuel form (simplified)
+    // Only gallons + cost/location for semi. No odometer, no state.
+    // OLD: Always asked for odometer — drivers couldn't remember mid-shift start
+    // NEW: Skips odometer entirely for mid-shift stops
+    // -------------------------------------------------------
+    if (fuelEndOfDay === false) {
+      return (
+        <div className="App">
+          {isLoading && (
+            <div className="loading-overlay">
+              <div className="loading-spinner"></div>
+              <div className="loading-text">Submitting...</div>
+            </div>
+          )}
+          <div className={`container ${animationClass}`}>
+            <div className="header">
+              <button onClick={() => setFuelEndOfDay(null)} className="btn btn-back">← Back</button>
+              <h1>Mid-Shift Fuel Stop</h1>
+              <p className="user-info">Driver: {displayName} | Truck: {selectedTruck}</p>
+            </div>
+
+            <div style={{
+              background: '#e3f2fd',
+              border: '2px solid #2196f3',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              fontSize: '14px',
+              color: '#0d47a1'
+            }}>
+              🚛 Mid-shift stop — just log your gallons. Mileage stays open.
+            </div>
+
+            <form onSubmit={submitFuelData} className="tracking-form">
+              <div className="form-group">
+                <label htmlFor="fuel-date">Date:</label>
+                <input
+                  id="fuel-date"
+                  type="date"
+                  value={fuelData.date}
+                  onChange={(e) => setFuelData({...fuelData, date: e.target.value})}
+                  required
+                  className="text-input"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="fuel-gallons">{isSemi ? 'Gallons Purchased:' : 'Gallons Filled:'}</label>
+                <input
+                  id="fuel-gallons"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  value={fuelData.gallons}
+                  onChange={(e) => setFuelData({...fuelData, gallons: e.target.value})}
+                  placeholder="Enter gallons"
+                  required
+                  className="text-input"
+                />
+              </div>
+
+              {isSemi && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="fuel-cost">Total Cost ($):</label>
+                    <input
+                      id="fuel-cost"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={fuelData.cost}
+                      onChange={(e) => setFuelData({...fuelData, cost: e.target.value})}
+                      placeholder="Enter total cost"
+                      required
+                      className="text-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="fuel-location">Location (Optional):</label>
+                    <input
+                      id="fuel-location"
+                      type="text"
+                      value={fuelData.location}
+                      onChange={(e) => setFuelData({...fuelData, location: e.target.value})}
+                      placeholder="e.g., Shell - McCook"
+                      className="text-input"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="fuel-photo">Receipt Photo (Optional):</label>
+                    <input
+                      id="fuel-photo"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleFuelPhotoUpload}
+                      className="file-input"
+                    />
+                    {fuelData.fuelPhoto && <p className="file-preview">✅ Photo attached</p>}
+                  </div>
+                  {costPerGallon > 0 && (
+                    <div className="calculation-display">
+                      <strong>Price per Gallon:</strong> ${costPerGallon}
+                    </div>
+                  )}
+                </>
+              )}
+
+              <button type="submit" className="btn btn-primary btn-submit">
+                Log Fuel Stop
+              </button>
+
+              {submitStatus && (
+                <div className={`status-message ${submitStatus.type}`}>
+                  {submitStatus.message}
+                </div>
+              )}
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // -------------------------------------------------------
+    // STEP 2B: End-of-day fuel form OR no-active-shift form
+    // Full form: odometer (pre-filled) + gallons + cost/location
+    // After submit routes to Complete Shift screen.
+    // OLD: Odometer was always blank or had to be recalled from memory
+    // NEW: Pre-filled from shift start mileage — driver just confirms
+    // -------------------------------------------------------
     return (
       <div className="App">
         {isLoading && (
@@ -3950,12 +4154,26 @@ function App() {
         )}
         <div className={`container ${animationClass}`}>
           <div className="header">
-            <button onClick={handleBack} className="btn btn-back">
+            <button onClick={fuelEndOfDay === true ? () => setFuelEndOfDay(null) : handleBack} className="btn btn-back">
               ← Back
             </button>
-            <h1>Track Fuel</h1>
+            <h1>{fuelEndOfDay === true ? 'End of Day Fuel' : 'Track Fuel'}</h1>
             <p className="user-info">Driver: {displayName} | Truck: {selectedTruck}</p>
           </div>
+
+          {fuelEndOfDay === true && (
+            <div style={{
+              background: '#e8f5e9',
+              border: '2px solid #48bb78',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              marginBottom: '20px',
+              fontSize: '14px',
+              color: '#22543d'
+            }}>
+              ✅ End of day — after submitting fuel, you'll confirm your ending mileage.
+            </div>
+          )}
 
           <form onSubmit={submitFuelData} className="tracking-form">
             <div className="form-group">
@@ -3985,11 +4203,8 @@ function App() {
               </select>
             </div>
 
-            {/* NEW: Odometer reading at time of fueling */}
-            {/* OLD: Did not exist — drivers had no way to log mileage with fuel entry */}
-            {/* NEW: Pre-filled from active shift start mileage or last completed shift */}
             <div className="form-group">
-              <label htmlFor="fuel-odometer">Odometer Reading:</label>
+              <label htmlFor="fuel-odometer">Current Odometer Reading:</label>
               <input
                 id="fuel-odometer"
                 type="number"
@@ -4001,10 +4216,10 @@ function App() {
                 required
                 className="text-input"
               />
-              {(incompleteEntry?.mileageStart || lastTruckMileage) && 
+              {(incompleteEntry?.mileageStart || lastTruckMileage) &&
                fuelData.odometer === (incompleteEntry?.mileageStart || lastTruckMileage).toString() && (
                 <small style={{ color: '#38a169', fontWeight: '600', marginTop: '4px', display: 'block' }}>
-                  ✅ Pre-filled from your current shift — verify and adjust if needed
+                  ✅ Pre-filled from your shift — verify and adjust if needed
                 </small>
               )}
             </div>
@@ -4040,7 +4255,6 @@ function App() {
                     className="text-input"
                   />
                 </div>
-
                 <div className="form-group">
                   <label htmlFor="fuel-location">Location (Optional):</label>
                   <input
@@ -4052,7 +4266,6 @@ function App() {
                     className="text-input"
                   />
                 </div>
-
                 <div className="form-group">
                   <label htmlFor="fuel-photo">Receipt Photo (Optional):</label>
                   <input
@@ -4063,11 +4276,8 @@ function App() {
                     onChange={handleFuelPhotoUpload}
                     className="file-input"
                   />
-                  {fuelData.fuelPhoto && (
-                    <p className="file-preview">✅ Photo attached</p>
-                  )}
+                  {fuelData.fuelPhoto && <p className="file-preview">✅ Photo attached</p>}
                 </div>
-
                 {costPerGallon > 0 && (
                   <div className="calculation-display">
                     <strong>Price per Gallon:</strong> ${costPerGallon}
@@ -4077,7 +4287,7 @@ function App() {
             )}
 
             <button type="submit" className="btn btn-primary btn-submit">
-              Submit Fuel Data
+              {fuelEndOfDay === true ? 'Submit & Close Shift →' : 'Submit Fuel Data'}
             </button>
 
             {submitStatus && (
