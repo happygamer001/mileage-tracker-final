@@ -5,6 +5,7 @@ import './App.css';
 const TRUCKS = [
   'Green Semi',
   'Dump Truck (2525)',
+  'Front Loading (2006)',
   '2500',
   '2502',
   '2503',
