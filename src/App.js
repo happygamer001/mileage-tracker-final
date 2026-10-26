@@ -157,6 +157,21 @@ function App() {
     issues: ''
   }));
 
+  // Plant Breakdown state
+  // NEW: Tracks whether batch manager has enabled plant breakdown reporting.
+  // OLD: Did not exist — there was no plant material tracking on the daily report.
+  // NEW: plantBreakdown toggles the section; plantMaterials holds each material's
+  //      name, entered amount, and type ('Standard' or 'Custom').
+  const [plantBreakdown, setPlantBreakdown] = useState(false);
+  const [plantMaterials, setPlantMaterials] = useState([
+    { name: 'Gravel',    amount: '', type: 'Standard' },
+    { name: 'Limestone', amount: '', type: 'Standard' },
+    { name: 'MudRock',   amount: '', type: 'Standard' },
+    { name: 'Cement',    amount: '', type: 'Standard' }
+  ]);
+  // NEW: Holds the name typed for a new custom material before it is added to the list.
+  const [newMaterialName, setNewMaterialName] = useState('');
+
   // Driver work status - initialized with known drivers + 2 blanks
   // FIX: All three statuses (halfDay, fullDay, absent) are included and mutually exclusive
   const [driverStatus, setDriverStatus] = useState({
@@ -1676,7 +1691,15 @@ function App() {
       fuelReading: dailyReportData.fuelReading ? parseFloat(dailyReportData.fuelReading) : 0,
       issues: dailyReportData.issues || 'N/A',
       preparedBy: submitterName,
-      timestamp: getCentralISOString()
+      timestamp: getCentralISOString(),
+      // NEW: Plant breakdown data — only sent when the checkbox is checked.
+      // OLD: Did not exist.
+      // NEW: API will write one row per material (with an amount > 0) to the
+      //      Plant Breakdown Material Tracker Notion database.
+      plantBreakdown: plantBreakdown,
+      plantMaterials: plantBreakdown
+        ? plantMaterials.filter(m => m.amount !== '' && parseFloat(m.amount) > 0)
+        : []
     };
 
     console.log('Submitting daily report:', payload); // Debug log
@@ -1725,6 +1748,17 @@ function App() {
           'Custom1': { name: '', halfDay: false, fullDay: false, absent: false },
           'Custom2': { name: '', halfDay: false, fullDay: false, absent: false }
         });
+
+        // NEW: Reset plant breakdown state after successful submit.
+        // OLD: Did not exist — plant breakdown state was never reset.
+        setPlantBreakdown(false);
+        setPlantMaterials([
+          { name: 'Gravel',    amount: '', type: 'Standard' },
+          { name: 'Limestone', amount: '', type: 'Standard' },
+          { name: 'MudRock',   amount: '', type: 'Standard' },
+          { name: 'Cement',    amount: '', type: 'Standard' }
+        ]);
+        setNewMaterialName('');
       } else {
         // Show detailed error from backend
         const errorMessage = responseData.error || responseData.message || 'Failed to submit data';
@@ -4529,6 +4563,97 @@ function App() {
                 className="textarea-input"
               />
             </div>
+
+            {/* -------------------------------------------------------
+                PLANT BREAKDOWN SECTION
+                NEW: Batch manager can optionally log material amounts used
+                     at the plant. Only visible when the checkbox is checked.
+                OLD: Did not exist — no plant material data was collected.
+                ------------------------------------------------------- */}
+            <div className="form-group">
+              <label className="checkbox-container" style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={plantBreakdown}
+                  onChange={(e) => setPlantBreakdown(e.target.checked)}
+                />
+                <span>🪨 Plant Breakdown</span>
+              </label>
+              <small style={{ color: '#718096', fontSize: '12px', display: 'block', marginTop: '4px' }}>
+                Check to log material amounts used at the plant today.
+              </small>
+            </div>
+
+            {plantBreakdown && (
+              <div className="form-group" style={{ background: 'var(--card-bg, #f7fafc)', border: '1px solid var(--border-color, #e2e8f0)', borderRadius: '8px', padding: '16px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: 600 }}>Plant Material Amounts</h4>
+
+                {/* Standard + custom materials */}
+                {plantMaterials.map((mat, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <label style={{ flex: '0 0 110px', fontSize: '14px', fontWeight: mat.type === 'Custom' ? 500 : 400 }}>
+                      {mat.name}{mat.type === 'Custom' && <span style={{ color: '#e67e22', marginLeft: '4px', fontSize: '11px' }}>custom</span>}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      value={mat.amount}
+                      onChange={(e) => {
+                        const updated = [...plantMaterials];
+                        updated[idx] = { ...updated[idx], amount: e.target.value };
+                        setPlantMaterials(updated);
+                      }}
+                      placeholder="0.00"
+                      className="number-input"
+                      style={{ flex: 1, maxWidth: '140px' }}
+                    />
+                    {mat.type === 'Custom' && (
+                      <button
+                        type="button"
+                        onClick={() => setPlantMaterials(plantMaterials.filter((_, i) => i !== idx))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e53e3e', fontSize: '18px', lineHeight: 1 }}
+                        title="Remove"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add custom material */}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '14px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={newMaterialName}
+                    onChange={(e) => setNewMaterialName(e.target.value)}
+                    placeholder="New material name..."
+                    className="custom-driver-input"
+                    style={{ flex: 1 }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const trimmed = newMaterialName.trim();
+                        if (trimmed) {
+                          setPlantMaterials([...plantMaterials, { name: trimmed, amount: '', type: 'Custom' }]);
+                          setNewMaterialName('');
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '8px 14px', fontSize: '13px', whiteSpace: 'nowrap' }}
+                    onClick={() => {
+                      const trimmed = newMaterialName.trim();
+                      if (trimmed) {
+                        setPlantMaterials([...plantMaterials, { name: trimmed, amount: '', type: 'Custom' }]);
+                        setNewMaterialName('');
+                      }
+                    }}
+                  >+ Add Material</button>
+                </div>
+              </div>
+            )}
 
             <button type="submit" className="btn btn-primary btn-submit">
               Submit Daily Report
