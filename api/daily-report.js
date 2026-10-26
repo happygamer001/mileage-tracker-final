@@ -20,149 +20,114 @@ module.exports = async (req, res) => {
     const notionApiKey = process.env.NOTION_API_KEY;
     const databaseId = process.env.NOTION_DAILY_REPORT_DB_ID;
 
-    // Validate environment variables
     if (!notionApiKey) {
       console.error('Missing NOTION_API_KEY');
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Server configuration error: Missing API key' 
-      });
+      return res.status(500).json({ success: false, error: 'Server configuration error: Missing API key' });
     }
 
     if (!databaseId) {
       console.error('Missing NOTION_DAILY_REPORT_DB_ID');
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Server configuration error: Missing database ID' 
-      });
+      return res.status(500).json({ success: false, error: 'Server configuration error: Missing database ID' });
     }
 
-    // Parse request body
     const {
-      name,           // Batch manager name (submitter)
-      date,           // Report date
-      yardsOut,       // Total yards of concrete delivered
-      tripsOut,       // Number of trips/loads
-      drivers,        // Array of driver objects: [{name, status, hours}, ...]
-      fuelReading,    // End of day fuel tank reading
-      issues,         // Issues/notes
-      preparedBy,     // Who submitted (same as name usually)
-      timestamp       // Submission timestamp
+      name,
+      date,
+      yardsOut,
+      tripsOut,
+      drivers,       // Array: [{name, status, hours}, ...]
+                     // status values: "Full Day" | "Half Day" | "Absent"
+      fuelReading,
+      issues,
+      preparedBy,
+      timestamp,
+      // NEW: Plant breakdown fields — sent when batch manager checks the
+      //      "Plant Breakdown" box on the daily report form.
+      // OLD: Did not exist.
+      // NEW: plantBreakdown is a boolean gate; plantMaterials is an array of
+      //      { name, amount, type } objects (already filtered to amount > 0 by the frontend).
+      plantBreakdown,
+      plantMaterials  // Array: [{ name, amount, type }, ...]
     } = req.body;
 
     console.log('Received daily report:', { name, date, yardsOut, tripsOut, drivers, fuelReading, issues });
 
-    // Validate required fields
     if (!date) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required field: date' 
-      });
+      return res.status(400).json({ success: false, error: 'Missing required field: date' });
     }
 
     if (!name) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Missing required field: name (batch manager)' 
-      });
+      return res.status(400).json({ success: false, error: 'Missing required field: name (batch manager)' });
     }
 
-    // Build properties object for Notion
-    // Name is the title property
     const properties = {
       'Name': {
-        title: [
-          {
-            text: {
-              content: `Daily Report - ${date}`
-            }
-          }
-        ]
+        title: [{ text: { content: `Daily Report - ${date}` } }]
       },
       'Report Date': {
-        date: {
-          start: date
-        }
+        date: { start: date }
       },
       'Submitted By': {
-        rich_text: [
-          {
-            text: {
-              content: name || preparedBy || 'Unknown'
-            }
-          }
-        ]
+        rich_text: [{ text: { content: name || preparedBy || 'Unknown' } }]
       }
     };
 
-    // Add total yards out (concrete delivered)
     if (yardsOut !== undefined && yardsOut !== null && yardsOut !== '') {
       const yards = parseFloat(yardsOut);
-      if (!isNaN(yards)) {
-        properties['Total Yards Out'] = {
-          number: yards
-        };
-      }
+      if (!isNaN(yards)) properties['Total Yards Out'] = { number: yards };
     }
 
-    // Add trips out
     if (tripsOut !== undefined && tripsOut !== null && tripsOut !== '') {
       const trips = parseFloat(tripsOut);
-      if (!isNaN(trips)) {
-        properties['Trips Out'] = {
-          number: trips
-        };
-      }
+      if (!isNaN(trips)) properties['Trips Out'] = { number: trips };
     }
 
-    // Add end of day fuel reading
     if (fuelReading !== undefined && fuelReading !== null && fuelReading !== '') {
       const fuel = parseFloat(fuelReading);
-      if (!isNaN(fuel)) {
-        properties['End of Day Fuel Reading'] = {
-          number: fuel
-        };
-      }
+      if (!isNaN(fuel)) properties['End of Day Fuel Reading'] = { number: fuel };
     }
 
-    // Add issues presented
     if (issues) {
       properties['Issues Presented'] = {
-        rich_text: [
-          {
-            text: {
-              content: issues
-            }
-          }
-        ]
+        rich_text: [{ text: { content: issues } }]
       };
     }
 
-    // Process drivers array into individual driver fields
-    // Expected format: [{name: "James", status: "Working", hours: 8}, ...]
+    // -------------------------------------------------------
+    // DRIVER PROCESSING — now includes status (Full Day / Half Day / Absent)
+    // -------------------------------------------------------
+    // Valid status values that must match your Notion select options exactly:
+    const VALID_STATUSES = ['Full Day', 'Half Day', 'Absent'];
+
     if (drivers && Array.isArray(drivers)) {
       drivers.forEach((driver, index) => {
-        if (index < 5 && driver.name) { // Only 5 driver slots
+        if (index < 5 && driver.name) {
           const driverNum = index + 1;
-          
-          // Set driver name
+
+          // Driver name
           properties[`Driver ${driverNum} Name`] = {
-            rich_text: [
-              {
-                text: {
-                  content: driver.name
-                }
-              }
-            ]
+            rich_text: [{ text: { content: driver.name } }]
           };
 
-          // Set driver hours (if provided)
-          if (driver.hours !== undefined && driver.hours !== null && driver.hours !== '') {
+          // Driver status — sent as a Select property in Notion
+          // Make sure your Notion DB has a Select column named "Driver N Status"
+          // with options: Full Day, Half Day, Absent
+          if (driver.status && VALID_STATUSES.includes(driver.status)) {
+            properties[`Driver ${driverNum} Status`] = {
+              select: { name: driver.status }
+            };
+          }
+
+          // Driver hours — only meaningful for Full Day / Half Day
+          if (
+            driver.status !== 'Absent' &&
+            driver.hours !== undefined &&
+            driver.hours !== null &&
+            driver.hours !== ''
+          ) {
             const hours = parseFloat(driver.hours);
             if (!isNaN(hours)) {
-              properties[`Driver ${driverNum} Hours`] = {
-                number: hours
-              };
+              properties[`Driver ${driverNum} Hours`] = { number: hours };
             }
           }
         }
@@ -171,7 +136,6 @@ module.exports = async (req, res) => {
 
     console.log('Notion properties:', JSON.stringify(properties, null, 2));
 
-    // Create page in Notion
     const response = await fetch('https://api.notion.com/v1/pages', {
       method: 'POST',
       headers: {
@@ -180,9 +144,7 @@ module.exports = async (req, res) => {
         'Notion-Version': '2022-06-28'
       },
       body: JSON.stringify({
-        parent: {
-          database_id: databaseId
-        },
+        parent: { database_id: databaseId },
         properties: properties
       })
     });
@@ -191,32 +153,91 @@ module.exports = async (req, res) => {
 
     if (!response.ok) {
       console.error('Notion API error:', JSON.stringify(data, null, 2));
-      
-      // Extract specific error details
-      let errorDetails = '';
-      if (data.message) {
-        errorDetails = data.message;
-      }
-      
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         error: 'Database property mismatch',
-        details: errorDetails,
+        details: data.message || '',
         hint: 'Check that Notion database has correct property names and types'
       });
     }
 
     console.log('Successfully created daily report in Notion');
-    return res.status(200).json({ 
-      success: true, 
+
+    // -------------------------------------------------------
+    // PLANT BREAKDOWN — write one row per material to the
+    // Plant Breakdown Material Tracker database.
+    // NEW: Runs only when plantBreakdown === true and at least
+    //      one material has an amount. Each material becomes its
+    //      own Notion page in NOTION_PLANT_BREAKDOWN_DB_ID.
+    // OLD: Did not exist.
+    // -------------------------------------------------------
+    const plantBreakdownDbId = process.env.NOTION_PLANT_BREAKDOWN_DB_ID;
+
+    if (plantBreakdown && Array.isArray(plantMaterials) && plantMaterials.length > 0 && plantBreakdownDbId) {
+      const materialWrites = plantMaterials.map(async (mat) => {
+        const matProperties = {
+          // Title column — material name
+          'Material': {
+            title: [{ text: { content: mat.name || 'Unknown' } }]
+          },
+          'Amount': {
+            number: parseFloat(mat.amount) || 0
+          },
+          'Report Date': {
+            date: { start: date }
+          },
+          'Batch Manager': {
+            rich_text: [{ text: { content: name || preparedBy || 'Unknown' } }]
+          },
+          // 'Standard' or 'Custom' — must match Notion select options exactly
+          'Material Type': {
+            select: { name: mat.type === 'Custom' ? 'Custom' : 'Standard' }
+          },
+          // Links this row back to the daily report for easy lookup
+          'Daily Report Ref': {
+            rich_text: [{ text: { content: `Daily Report - ${date}` } }]
+          }
+        };
+
+        const matResponse = await fetch('https://api.notion.com/v1/pages', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${notionApiKey}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28'
+          },
+          body: JSON.stringify({
+            parent: { database_id: plantBreakdownDbId },
+            properties: matProperties
+          })
+        });
+
+        if (!matResponse.ok) {
+          const matError = await matResponse.json();
+          console.error(`Failed to write plant material "${mat.name}":`, JSON.stringify(matError, null, 2));
+          // Non-fatal: log error but don't fail the whole request
+        } else {
+          console.log(`Plant material "${mat.name}" recorded (amount: ${mat.amount})`);
+        }
+      });
+
+      // Run all material writes in parallel; failures are logged but do not
+      // block the main daily report success response.
+      await Promise.allSettled(materialWrites);
+    } else if (plantBreakdown && !plantBreakdownDbId) {
+      console.warn('plantBreakdown was true but NOTION_PLANT_BREAKDOWN_DB_ID is not set — skipping material rows');
+    }
+
+    return res.status(200).json({
+      success: true,
       message: 'Daily report submitted successfully',
       pageId: data.id
     });
 
   } catch (error) {
     console.error('Error in daily report API:', error);
-    return res.status(500).json({ 
-      success: false, 
+    return res.status(500).json({
+      success: false,
       error: 'Internal server error',
       details: error.message
     });
